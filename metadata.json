@@ -1,0 +1,6 @@
+{
+  "name": "Caseiro Editora",
+  "description": "Biblioteca digital premium de e-books acessível por assinatura. Uma experiência inspirada em Netflix e Kindle Unlimited.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
