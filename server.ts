@@ -1,18 +1,100 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
 import dotenv from 'dotenv';
 import Stripe from 'stripe';
 import { createServer as createViteServer } from 'vite';
+import { initialBooks } from './src/data/initialBooks';
 
 // Load environment variables
 dotenv.config();
+
+// Ensure persistent directories exist
+const dataDir = path.join(process.cwd(), 'data');
+const uploadsDir = path.join(process.cwd(), 'uploads');
+if (!fs.existsSync(dataDir)) {
+  fs.mkdirSync(dataDir, { recursive: true });
+}
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+const booksFilePath = path.join(dataDir, 'books.json');
+
+function loadServerBooks() {
+  try {
+    if (fs.existsSync(booksFilePath)) {
+      const data = fs.readFileSync(booksFilePath, 'utf-8');
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.error('Erro ao ler books.json:', err);
+  }
+  // Initialize with initialBooks if empty or not yet created
+  try {
+    fs.writeFileSync(booksFilePath, JSON.stringify(initialBooks, null, 2), 'utf-8');
+  } catch (err) {
+    console.error('Erro ao inicializar books.json:', err);
+  }
+  return initialBooks;
+}
+
+function saveServerBooks(books: any[]) {
+  try {
+    fs.writeFileSync(booksFilePath, JSON.stringify(books, null, 2), 'utf-8');
+  } catch (err) {
+    console.error('Erro ao gravar books.json:', err);
+  }
+}
+
+// Helper to save a data URL (base64) to the uploads folder and return its public URL
+function saveBase64File(dataUrl: string, prefix: string, originalName?: string): string {
+  try {
+    if (!dataUrl || !dataUrl.startsWith('data:')) {
+      return dataUrl;
+    }
+    const matches = dataUrl.match(/^data:([A-Za-z-+\/0-9]+);base64,(.+)$/);
+    if (!matches || matches.length !== 3) {
+      return dataUrl;
+    }
+    const mimeType = matches[1];
+    const base64Data = matches[2];
+    const buffer = Buffer.from(base64Data, 'base64');
+
+    let ext = 'bin';
+    if (mimeType.includes('pdf')) ext = 'pdf';
+    else if (mimeType.includes('epub')) ext = 'epub';
+    else if (mimeType.includes('jpeg') || mimeType.includes('jpg')) ext = 'jpg';
+    else if (mimeType.includes('png')) ext = 'png';
+    else if (mimeType.includes('webp')) ext = 'webp';
+
+    const safeName = originalName
+      ? originalName.replace(/[^a-zA-Z0-9_\-\.]/g, '_')
+      : `file_${Date.now()}.${ext}`;
+
+    const fileName = `${prefix}_${Date.now()}_${safeName.endsWith('.' + ext) ? safeName : safeName + '.' + ext}`;
+    const filePath = path.join(uploadsDir, fileName);
+    fs.writeFileSync(filePath, buffer);
+    return `/uploads/${fileName}`;
+  } catch (err) {
+    console.error('Erro ao gravar ficheiro no disco:', err);
+    return dataUrl;
+  }
+}
 
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
-  // Middleware for parsing JSON bodies
-  app.use(express.json());
+  // Middleware for parsing JSON bodies with large limits for file uploads
+  app.use(express.json({ limit: '100mb' }));
+  app.use(express.urlencoded({ limit: '100mb', extended: true }));
+
+  // Serve persistent uploads folder statically
+  app.use('/uploads', express.static(uploadsDir));
 
   // Safe lazy-initialization helper for Stripe
   let stripeClient: Stripe | null = null;
@@ -116,6 +198,168 @@ async function startServer() {
         error: 'Erro interno ao processar o pagamento.',
         message: err.message 
       });
+    }
+  });
+
+  // --- BOOKS & FILES PERSISTENT API ROUTES ---
+
+  // Get all books
+  app.get('/api/books', (req, res) => {
+    try {
+      const books = loadServerBooks();
+      res.json(books);
+    } catch (err: any) {
+      console.error('Erro ao listar livros:', err);
+      res.status(500).json({ error: 'Erro ao listar livros', message: err.message });
+    }
+  });
+
+  // Add new book
+  app.post('/api/books', (req, res) => {
+    try {
+      const newBook = req.body;
+      if (!newBook || !newBook.title) {
+        return res.status(400).json({ error: 'Dados do livro inválidos' });
+      }
+
+      const bookId = newBook.id || String(Date.now());
+      newBook.id = bookId;
+
+      // Persist cover image if base64 data URL
+      if (newBook.coverUrl && newBook.coverUrl.startsWith('data:')) {
+        newBook.coverUrl = saveBase64File(newBook.coverUrl, `cover_${bookId}`);
+      }
+
+      // Persist PDF if base64 data URL
+      if (newBook.pdfData && newBook.pdfData.startsWith('data:')) {
+        const savedPdfUrl = saveBase64File(newBook.pdfData, `pdf_${bookId}`, newBook.pdfName || 'documento.pdf');
+        newBook.pdfUrl = savedPdfUrl;
+      }
+
+      // Persist EPUB if base64 data URL
+      if (newBook.epubData && newBook.epubData.startsWith('data:')) {
+        const savedEpubUrl = saveBase64File(newBook.epubData, `epub_${bookId}`, newBook.epubName || 'livro.epub');
+        newBook.epubUrl = savedEpubUrl;
+      }
+
+      const currentBooks = loadServerBooks();
+      const updatedBooks = [newBook, ...currentBooks.filter((b: any) => b.id !== bookId)];
+      saveServerBooks(updatedBooks);
+
+      res.status(201).json(newBook);
+    } catch (err: any) {
+      console.error('Erro ao guardar livro no servidor:', err);
+      res.status(500).json({ error: 'Erro ao guardar livro no servidor', message: err.message });
+    }
+  });
+
+  // Update existing book
+  app.put('/api/books/:id', (req, res) => {
+    try {
+      const { id } = req.params;
+      const updatedData = req.body;
+      const currentBooks = loadServerBooks();
+      const index = currentBooks.findIndex((b: any) => b.id === id);
+
+      if (index === -1) {
+        return res.status(404).json({ error: 'Livro não encontrado' });
+      }
+
+      // Persist updated cover image if base64 data URL
+      if (updatedData.coverUrl && updatedData.coverUrl.startsWith('data:')) {
+        updatedData.coverUrl = saveBase64File(updatedData.coverUrl, `cover_${id}`);
+      }
+
+      // Persist updated PDF if base64 data URL
+      if (updatedData.pdfData && updatedData.pdfData.startsWith('data:')) {
+        const savedPdfUrl = saveBase64File(updatedData.pdfData, `pdf_${id}`, updatedData.pdfName || 'documento.pdf');
+        updatedData.pdfUrl = savedPdfUrl;
+      }
+
+      // Persist updated EPUB if base64 data URL
+      if (updatedData.epubData && updatedData.epubData.startsWith('data:')) {
+        const savedEpubUrl = saveBase64File(updatedData.epubData, `epub_${id}`, updatedData.epubName || 'livro.epub');
+        updatedData.epubUrl = savedEpubUrl;
+      }
+
+      currentBooks[index] = { ...currentBooks[index], ...updatedData };
+      saveServerBooks(currentBooks);
+
+      res.json(currentBooks[index]);
+    } catch (err: any) {
+      console.error('Erro ao atualizar livro no servidor:', err);
+      res.status(500).json({ error: 'Erro ao atualizar livro no servidor', message: err.message });
+    }
+  });
+
+  // Delete book
+  app.delete('/api/books/:id', (req, res) => {
+    try {
+      const { id } = req.params;
+      const currentBooks = loadServerBooks();
+      const filtered = currentBooks.filter((b: any) => b.id !== id);
+      saveServerBooks(filtered);
+      res.json({ success: true, id });
+    } catch (err: any) {
+      console.error('Erro ao remover livro no servidor:', err);
+      res.status(500).json({ error: 'Erro ao remover livro no servidor', message: err.message });
+    }
+  });
+
+  // Direct file upload endpoint
+  app.post('/api/upload', (req, res) => {
+    try {
+      const { fileName, fileData, prefix = 'upload' } = req.body;
+      if (!fileData) {
+        return res.status(400).json({ error: 'Nenhum ficheiro fornecido' });
+      }
+      const publicUrl = saveBase64File(fileData, prefix, fileName);
+      res.json({ url: publicUrl, fileName });
+    } catch (err: any) {
+      console.error('Erro ao processar upload:', err);
+      res.status(500).json({ error: 'Erro ao processar upload', message: err.message });
+    }
+  });
+
+  // Download book file endpoint
+  app.get('/api/download/:bookId/:format', (req, res) => {
+    try {
+      const { bookId, format } = req.params;
+      const books = loadServerBooks();
+      const book = books.find((b: any) => b.id === bookId);
+      if (!book) {
+        return res.status(404).json({ error: 'Livro não encontrado' });
+      }
+
+      const isEpub = format === 'epub';
+      const fileUrl = isEpub ? book.epubUrl : book.pdfUrl;
+      const fileName = isEpub 
+        ? (book.epubName || `${book.title}.epub`) 
+        : (book.pdfName || `${book.title}.pdf`);
+
+      if (fileUrl && fileUrl.startsWith('/uploads/')) {
+        const filePath = path.join(process.cwd(), fileUrl.replace(/^\//, ''));
+        if (fs.existsSync(filePath)) {
+          return res.download(filePath, fileName);
+        }
+      }
+
+      // If file is stored in memory as base64
+      const fileData = isEpub ? book.epubData : book.pdfData;
+      if (fileData && fileData.startsWith('data:')) {
+        const matches = fileData.match(/^data:([A-Za-z-+\/0-9]+);base64,(.+)$/);
+        if (matches && matches[2]) {
+          const buffer = Buffer.from(matches[2], 'base64');
+          res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
+          res.setHeader('Content-Type', matches[1] || 'application/octet-stream');
+          return res.send(buffer);
+        }
+      }
+
+      res.status(404).json({ error: 'Ficheiro não encontrado para este livro' });
+    } catch (err: any) {
+      console.error('Erro ao efetuar download:', err);
+      res.status(500).json({ error: 'Erro no download', message: err.message });
     }
   });
 

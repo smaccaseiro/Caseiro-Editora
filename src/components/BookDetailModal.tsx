@@ -11,7 +11,7 @@ interface BookDetailModalProps {
   onToggleFavorite: (bookId: string) => void;
   onRead: (book: Book) => void;
   onSubscribe: () => void;
-  onDownload: (book: Book) => void;
+  onDownload: (book: Book, format?: 'pdf' | 'epub') => void;
 }
 
 export default function BookDetailModal({
@@ -148,15 +148,15 @@ export default function BookDetailModal({
 
                 <div className="grid grid-cols-2 gap-3 pt-1">
                   <button
-                    onClick={() => onDownload(book)}
-                    className="flex items-center justify-center space-x-1.5 py-2.5 rounded-lg text-xs font-semibold bg-brand-medium/10 hover:bg-brand-medium/20 text-brand-medium dark:text-brand-gold-light transition-all"
+                    onClick={() => onDownload(book, 'pdf')}
+                    className="flex items-center justify-center space-x-1.5 py-2.5 rounded-lg text-xs font-semibold bg-brand-medium/10 hover:bg-brand-medium/20 text-brand-medium dark:text-brand-gold-light transition-all cursor-pointer"
                   >
                     <Download className="w-3.5 h-3.5 text-brand-gold" />
                     <span>Descarregar PDF</span>
                   </button>
                   <button
-                    onClick={() => onDownload(book)}
-                    className="flex items-center justify-center space-x-1.5 py-2.5 rounded-lg text-xs font-semibold bg-brand-medium/10 hover:bg-brand-medium/20 text-brand-medium dark:text-brand-gold-light transition-all"
+                    onClick={() => onDownload(book, 'epub')}
+                    className="flex items-center justify-center space-x-1.5 py-2.5 rounded-lg text-xs font-semibold bg-brand-medium/10 hover:bg-brand-medium/20 text-brand-medium dark:text-brand-gold-light transition-all cursor-pointer"
                   >
                     <Download className="w-3.5 h-3.5 text-brand-gold" />
                     <span>Descarregar EPUB</span>

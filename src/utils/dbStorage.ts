@@ -1,13 +1,13 @@
 // IndexedDB Helper for Caseiro Editora persistent storage
 
 const DB_NAME = 'CaseiroEditoraDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const BOOKS_STORE = 'books';
 const FILES_STORE = 'files';
 
 function getDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    if (!window.indexedDB) {
+    if (typeof window === 'undefined' || !window.indexedDB) {
       reject(new Error('IndexedDB não suportado neste navegador'));
       return;
     }
@@ -104,3 +104,20 @@ export async function getFileFromIndexedDB(key: string): Promise<string | null> 
     return null;
   }
 }
+
+/**
+ * Strips heavy data URLs from book objects so saving to browser localStorage
+ * never exceeds the browser's 5MB quota limit.
+ */
+export function cleanBookForLocalStorage(book: any): any {
+  if (!book) return book;
+  const cleaned = { ...book };
+  if (typeof cleaned.pdfData === 'string' && cleaned.pdfData.startsWith('data:')) {
+    delete cleaned.pdfData;
+  }
+  if (typeof cleaned.epubData === 'string' && cleaned.epubData.startsWith('data:')) {
+    delete cleaned.epubData;
+  }
+  return cleaned;
+}
+

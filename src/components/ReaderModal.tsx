@@ -1,5 +1,5 @@
 import { useState, useEffect, FormEvent } from 'react';
-import { X, ChevronLeft, ChevronRight, Type, BookOpen, Search, Maximize, Sun, Eye, Landmark } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Type, BookOpen, Search, Maximize, Sun, Eye, Landmark, FileText, Download } from 'lucide-react';
 import { Book } from '../types';
 
 interface ReaderModalProps {
@@ -19,6 +19,7 @@ export default function ReaderModal({
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<{ pageIndex: number; text: string }[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [showOriginalPdf, setShowOriginalPdf] = useState(false);
 
   const pages = book.content && book.content.length > 0 
     ? book.content 
@@ -182,6 +183,39 @@ export default function ReaderModal({
             </button>
           </div>
 
+          {/* PDF Viewer Toggle and Download if available */}
+          {(book.pdfData || book.pdfUrl) && (
+            <div className="flex items-center space-x-1.5">
+              <button
+                onClick={() => setShowOriginalPdf(!showOriginalPdf)}
+                className={`flex items-center space-x-1 px-2.5 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                  showOriginalPdf 
+                    ? 'bg-brand-gold text-brand-dark shadow-xs' 
+                    : 'bg-black/10 dark:bg-white/10 hover:bg-black/20 text-current'
+                }`}
+                title={showOriginalPdf ? 'Voltar ao modo leitor de texto' : 'Visualizar ficheiro PDF original'}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">{showOriginalPdf ? 'Modo Texto' : 'Ver PDF'}</span>
+              </button>
+              <button
+                onClick={() => {
+                  const href = book.pdfData || book.pdfUrl;
+                  if (!href) return;
+                  const a = document.createElement('a');
+                  a.href = href;
+                  a.download = book.pdfName || `${book.title}.pdf`;
+                  if (href.startsWith('/uploads/') || href.startsWith('http')) a.target = '_blank';
+                  a.click();
+                }}
+                className="p-1.5 rounded-md bg-black/10 dark:bg-white/10 hover:bg-black/20 text-current transition-colors cursor-pointer"
+                title="Descarregar ficheiro PDF"
+              >
+                <Download className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
           {/* Close Reader */}
           <button
             onClick={handleClose}
@@ -245,46 +279,58 @@ export default function ReaderModal({
           </div>
         )}
 
-        {/* Previous page margin clickable trigger */}
-        <button
-          onClick={handlePrev}
-          disabled={currentPage === 0}
-          className="hidden md:flex items-center justify-center w-20 h-full hover:bg-black/3 dark:hover:bg-white/3 transition-colors disabled:opacity-0"
-          title="Página Anterior"
-        >
-          <ChevronLeft className="w-8 h-8 opacity-65 group-hover:scale-115" />
-        </button>
-
-        {/* The Page Container itself (looks like a physical open book sheet) */}
-        <div className="flex-grow flex items-center justify-center p-4 sm:p-8 md:p-12 overflow-y-auto">
-          <div className="max-w-2xl w-full mx-auto bg-opacity-40 rounded-xl py-6 px-4 sm:px-10 leading-relaxed font-serif text-center md:text-left select-text">
-            {/* Top Chapter Indicator */}
-            <div className="flex items-center justify-between mb-8 pb-3 border-b border-black/10 dark:border-white/10 opacity-60 text-xs font-serif tracking-widest uppercase">
-              <span>{book.title}</span>
-              <span>Capítulo {currentPage + 1}</span>
-            </div>
-
-            {/* Simulated Page Text Content */}
-            <div className={`reader-page ${getFontClass()} indent-8 leading-loose tracking-wide first-letter:text-4xl first-letter:font-bold first-letter:mr-2`}>
-              {highlightText(pages[currentPage], searchQuery)}
-            </div>
-
-            {/* Bottom Book Page Footnote */}
-            <div className="mt-12 pt-4 border-t border-black/10 dark:border-white/10 opacity-55 text-center text-xs">
-              {currentPage + 1} de {totalPages}
-            </div>
+        {showOriginalPdf && (book.pdfData || book.pdfUrl) ? (
+          <div className="flex-grow flex flex-col h-full bg-gray-100 dark:bg-gray-900 relative">
+            <iframe
+              src={book.pdfData || book.pdfUrl}
+              title={book.title}
+              className="w-full h-full border-0"
+            />
           </div>
-        </div>
+        ) : (
+          <>
+            {/* Previous page margin clickable trigger */}
+            <button
+              onClick={handlePrev}
+              disabled={currentPage === 0}
+              className="hidden md:flex items-center justify-center w-20 h-full hover:bg-black/3 dark:hover:bg-white/3 transition-colors disabled:opacity-0"
+              title="Página Anterior"
+            >
+              <ChevronLeft className="w-8 h-8 opacity-65 group-hover:scale-115" />
+            </button>
 
-        {/* Next page margin clickable trigger */}
-        <button
-          onClick={handleNext}
-          disabled={currentPage === totalPages - 1}
-          className="hidden md:flex items-center justify-center w-20 h-full hover:bg-black/3 dark:hover:bg-white/3 transition-colors disabled:opacity-0"
-          title="Próxima Página"
-        >
-          <ChevronRight className="w-8 h-8 opacity-65" />
-        </button>
+            {/* The Page Container itself (looks like a physical open book sheet) */}
+            <div className="flex-grow flex items-center justify-center p-4 sm:p-8 md:p-12 overflow-y-auto">
+              <div className="max-w-2xl w-full mx-auto bg-opacity-40 rounded-xl py-6 px-4 sm:px-10 leading-relaxed font-serif text-center md:text-left select-text">
+                {/* Top Chapter Indicator */}
+                <div className="flex items-center justify-between mb-8 pb-3 border-b border-black/10 dark:border-white/10 opacity-60 text-xs font-serif tracking-widest uppercase">
+                  <span>{book.title}</span>
+                  <span>Capítulo {currentPage + 1}</span>
+                </div>
+
+                {/* Simulated Page Text Content */}
+                <div className={`reader-page ${getFontClass()} indent-8 leading-loose tracking-wide first-letter:text-4xl first-letter:font-bold first-letter:mr-2`}>
+                  {highlightText(pages[currentPage], searchQuery)}
+                </div>
+
+                {/* Bottom Book Page Footnote */}
+                <div className="mt-12 pt-4 border-t border-black/10 dark:border-white/10 opacity-55 text-center text-xs">
+                  {currentPage + 1} de {totalPages}
+                </div>
+              </div>
+            </div>
+
+            {/* Next page margin clickable trigger */}
+            <button
+              onClick={handleNext}
+              disabled={currentPage === totalPages - 1}
+              className="hidden md:flex items-center justify-center w-20 h-full hover:bg-black/3 dark:hover:bg-white/3 transition-colors disabled:opacity-0"
+              title="Próxima Página"
+            >
+              <ChevronRight className="w-8 h-8 opacity-65" />
+            </button>
+          </>
+        )}
       </div>
 
       {/* Bottom Footer Navigation Bar */}

@@ -329,12 +329,52 @@ export default function UserArea({
                         </div>
                       </div>
 
-                      <button
-                        onClick={() => onReadBook(b)}
-                        className="px-4 py-2 rounded-lg bg-brand-medium hover:bg-brand-dark text-white font-semibold text-xs"
-                      >
-                        Ler Offline
-                      </button>
+                      <div className="flex items-center space-x-2">
+                        {(b.pdfData || b.pdfUrl) && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const href = b.pdfData || b.pdfUrl;
+                              if (!href) return;
+                              const a = document.createElement('a');
+                              a.href = href;
+                              a.download = b.pdfName || `${b.title}.pdf`;
+                              if (href.startsWith('/uploads/') || href.startsWith('http')) a.target = '_blank';
+                              a.click();
+                            }}
+                            className="px-3 py-2 rounded-lg border border-brand-gray/30 hover:bg-brand-medium/10 text-xs font-semibold flex items-center space-x-1 cursor-pointer transition-colors"
+                            title="Descarregar ficheiro PDF"
+                          >
+                            <Download className="w-3.5 h-3.5 text-brand-gold" />
+                            <span>PDF</span>
+                          </button>
+                        )}
+                        {(b.epubData || b.epubUrl) && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const href = b.epubData || b.epubUrl;
+                              if (!href) return;
+                              const a = document.createElement('a');
+                              a.href = href;
+                              a.download = b.epubName || `${b.title}.epub`;
+                              if (href.startsWith('/uploads/') || href.startsWith('http')) a.target = '_blank';
+                              a.click();
+                            }}
+                            className="px-3 py-2 rounded-lg border border-brand-gray/30 hover:bg-brand-medium/10 text-xs font-semibold flex items-center space-x-1 cursor-pointer transition-colors"
+                            title="Descarregar ficheiro EPUB"
+                          >
+                            <Download className="w-3.5 h-3.5 text-brand-gold" />
+                            <span>EPUB</span>
+                          </button>
+                        )}
+                        <button
+                          onClick={() => onReadBook(b)}
+                          className="px-4 py-2 rounded-lg bg-brand-medium hover:bg-brand-dark text-white font-semibold text-xs cursor-pointer transition-colors"
+                        >
+                          Ler
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>

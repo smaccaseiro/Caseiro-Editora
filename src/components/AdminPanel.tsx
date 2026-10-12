@@ -1,6 +1,6 @@
 import { useState, useEffect, FormEvent, useRef, ChangeEvent } from 'react';
 import { Book, UserProfile, TranslationSet } from '../types';
-import { Plus, Edit, Trash2, CheckCircle, BarChart3, Users, BookOpen, Star, RefreshCw, Upload, Sparkles, FolderPlus, Globe, X } from 'lucide-react';
+import { Plus, Edit, Trash2, CheckCircle, BarChart3, Users, BookOpen, Star, RefreshCw, Upload, Sparkles, FolderPlus, Globe, X, FileText, Download, Check, AlertCircle, Loader2 } from 'lucide-react';
 
 interface AdminPanelProps {
   t: TranslationSet;
@@ -164,26 +164,42 @@ export default function AdminPanel({
     formEpubName,
   ]);
 
-  // File Upload Refs
+  // File Upload Refs and State
   const coverInputRef = useRef<HTMLInputElement>(null);
   const pdfInputRef = useRef<HTMLInputElement>(null);
   const epubInputRef = useRef<HTMLInputElement>(null);
 
+  const [isReadingPdf, setIsReadingPdf] = useState(false);
+  const [isReadingEpub, setIsReadingEpub] = useState(false);
+  const [isReadingCover, setIsReadingCover] = useState(false);
+  const [pdfFileSize, setPdfFileSize] = useState<string>('');
+  const [epubFileSize, setEpubFileSize] = useState<string>('');
+
+  const formatBytes = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
   const handleCoverFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      setIsReadingCover(true);
       const reader = new FileReader();
       reader.onload = (event) => {
         const rawResult = event.target?.result as string;
-        if (!rawResult) return;
+        if (!rawResult) {
+          setIsReadingCover(false);
+          return;
+        }
 
-        // Compress image using HTML Canvas to prevent exceeding localStorage quota
+        // Compress image using HTML Canvas to keep size optimal
         const img = new Image();
         img.onload = () => {
           const canvas = document.createElement('canvas');
           let width = img.width;
           let height = img.height;
-          const maxDim = 350;
+          const maxDim = 400;
 
           if (width > maxDim || height > maxDim) {
             if (width > height) {
@@ -200,16 +216,21 @@ export default function AdminPanel({
           const ctx = canvas.getContext('2d');
           if (ctx) {
             ctx.drawImage(img, 0, 0, width, height);
-            const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+            const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.75);
             setFormCoverUrl(compressedDataUrl);
           } else {
             setFormCoverUrl(rawResult);
           }
+          setIsReadingCover(false);
         };
         img.onerror = () => {
           setFormCoverUrl(rawResult);
+          setIsReadingCover(false);
         };
         img.src = rawResult;
+      };
+      reader.onerror = () => {
+        setIsReadingCover(false);
       };
       reader.readAsDataURL(file);
     }
@@ -220,11 +241,20 @@ export default function AdminPanel({
     const file = e.target.files?.[0];
     if (file) {
       setFormPdfName(file.name);
+      setPdfFileSize(formatBytes(file.size));
+      setIsReadingPdf(true);
 
       const reader = new FileReader();
       reader.onload = (event) => {
         const result = event.target?.result as string;
-        if (result) setFormPdfData(result);
+        if (result) {
+          setFormPdfData(result);
+        }
+        setIsReadingPdf(false);
+      };
+      reader.onerror = () => {
+        setIsReadingPdf(false);
+        alert('Erro ao processar ficheiro PDF.');
       };
       reader.readAsDataURL(file);
 
@@ -259,10 +289,20 @@ export default function AdminPanel({
     const file = e.target.files?.[0];
     if (file) {
       setFormEpubName(file.name);
+      setEpubFileSize(formatBytes(file.size));
+      setIsReadingEpub(true);
+
       const reader = new FileReader();
       reader.onload = (event) => {
         const result = event.target?.result as string;
-        if (result) setFormEpubData(result);
+        if (result) {
+          setFormEpubData(result);
+        }
+        setIsReadingEpub(false);
+      };
+      reader.onerror = () => {
+        setIsReadingEpub(false);
+        alert('Erro ao processar ficheiro EPUB.');
       };
       reader.readAsDataURL(file);
     }
@@ -303,6 +343,11 @@ export default function AdminPanel({
     setFormEpubName('');
     setFormPdfData('');
     setFormEpubData('');
+    setPdfFileSize('');
+    setEpubFileSize('');
+    setIsReadingPdf(false);
+    setIsReadingEpub(false);
+    setIsReadingCover(false);
     setFormCustomContent(null);
     setIsFormOpen(true);
   };
@@ -322,16 +367,27 @@ export default function AdminPanel({
     setFormYear(book.publishedYear);
     setFormDescription(book.description);
     setFormCoverUrl(book.coverUrl);
-    setFormPdfName(book.pdfName || book.pdfUrl || '');
-    setFormEpubName(book.epubName || book.epubUrl || '');
-    setFormPdfData(book.pdfData || '');
-    setFormEpubData(book.epubData || '');
+    setFormPdfName(book.pdfName || (book.pdfUrl && !book.pdfUrl.startsWith('data:') ? book.pdfUrl.split('/').pop() : '') || '');
+    setFormEpubName(book.epubName || (book.epubUrl && !book.epubUrl.startsWith('data:') ? book.epubUrl.split('/').pop() : '') || '');
+    setFormPdfData(book.pdfData || (book.pdfUrl?.startsWith('data:') ? book.pdfUrl : ''));
+    setFormEpubData(book.epubData || (book.epubUrl?.startsWith('data:') ? book.epubUrl : ''));
+    setPdfFileSize(book.pdfData || book.pdfUrl ? 'Ficheiro Anexado' : '');
+    setEpubFileSize(book.epubData || book.epubUrl ? 'Ficheiro Anexado' : '');
+    setIsReadingPdf(false);
+    setIsReadingEpub(false);
+    setIsReadingCover(false);
     setFormCustomContent(book.content || null);
     setIsFormOpen(true);
   };
 
   const handleFormSubmit = (e: FormEvent) => {
     e.preventDefault();
+
+    if (isReadingPdf || isReadingEpub || isReadingCover) {
+      alert('Os ficheiros enviados ainda estão a ser processados. Aguarde uns segundos antes de guardar.');
+      return;
+    }
+
     const finalContent = formCustomContent && formCustomContent.length > 0
       ? formCustomContent
       : (editingBook?.content && editingBook.content.length > 0
@@ -343,6 +399,9 @@ export default function AdminPanel({
               'Capítulo 4: Conclusão Geral do Enredo. Um desfecho emocionante que ficará guardado na memória do leitor.'
             ]);
 
+    const resolvedPdfData = formPdfData || editingBook?.pdfData;
+    const resolvedEpubData = formEpubData || editingBook?.epubData;
+
     const bookData: Book = {
       id: editingBook ? editingBook.id : String(Date.now()),
       title: formTitle,
@@ -353,12 +412,12 @@ export default function AdminPanel({
       publishedYear: Number(formYear),
       description: formDescription,
       coverUrl: formCoverUrl,
-      pdfUrl: formPdfName || 'documento_digital.pdf',
-      epubUrl: formEpubName || 'livro_digital.epub',
-      pdfName: formPdfName || 'documento_digital.pdf',
-      epubName: formEpubName || 'livro_digital.epub',
-      pdfData: formPdfData || editingBook?.pdfData,
-      epubData: formEpubData || editingBook?.epubData,
+      pdfUrl: formPdfName ? (editingBook?.pdfUrl || formPdfName) : (editingBook?.pdfUrl || 'documento_digital.pdf'),
+      epubUrl: formEpubName ? (editingBook?.epubUrl || formEpubName) : (editingBook?.epubUrl || 'livro_digital.epub'),
+      pdfName: formPdfName || editingBook?.pdfName || 'documento_digital.pdf',
+      epubName: formEpubName || editingBook?.epubName || 'livro_digital.epub',
+      pdfData: resolvedPdfData,
+      epubData: resolvedEpubData,
       isFeatured: editingBook ? editingBook.isFeatured : false,
       content: finalContent,
     };
@@ -748,46 +807,188 @@ export default function AdminPanel({
                     </div>
 
                     {/* Local PDF/EPUB Upload Controls */}
-                    <div className="col-span-1">
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="text-xs font-semibold">Ficheiro PDF</span>
-                        <button
-                          type="button"
-                          onClick={() => pdfInputRef.current?.click()}
-                          className="text-[11px] text-brand-gold font-bold hover:underline flex items-center space-x-1 cursor-pointer"
-                        >
-                          <Upload className="w-3.5 h-3.5" />
-                          <span>Carregar PDF</span>
-                        </button>
+                    <div className="col-span-1 space-y-2">
+                      <div className="flex justify-between items-center">
+                        <label className="text-xs font-semibold flex items-center space-x-1.5">
+                          <FileText className="w-3.5 h-3.5 text-brand-gold" />
+                          <span>Ficheiro PDF Digital</span>
+                        </label>
+                        {isReadingPdf && (
+                          <span className="text-[11px] text-brand-gold flex items-center space-x-1 animate-pulse">
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            <span>A processar...</span>
+                          </span>
+                        )}
                       </div>
-                      <input
-                        type="text"
-                        placeholder="Nome do ficheiro PDF ou URL"
-                        value={formPdfName}
-                        onChange={(e) => setFormPdfName(e.target.value)}
-                        className="w-full px-3 py-2 border border-brand-gray/55 dark:border-brand-medium/25 rounded-xl text-xs bg-transparent focus:ring-1 focus:ring-brand-gold focus:outline-none"
-                      />
+
+                      {/* PDF Uploaded Status Card */}
+                      {formPdfData || formPdfName ? (
+                        <div className="p-3 rounded-xl border border-green-500/30 bg-green-500/10 dark:bg-green-500/5 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-2 overflow-hidden">
+                              <div className="p-1.5 rounded-lg bg-green-500/20 text-green-600 dark:text-green-400 shrink-0">
+                                <Check className="w-4 h-4" />
+                              </div>
+                              <div className="overflow-hidden">
+                                <p className="text-xs font-bold text-brand-dark dark:text-white truncate">
+                                  {formPdfName || 'Ficheiro PDF'}
+                                </p>
+                                <p className="text-[10px] text-green-600 dark:text-green-400 font-semibold">
+                                  {pdfFileSize ? `Pronto para guardar (${pdfFileSize})` : 'Ficheiro pronto para guardar'}
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFormPdfData('');
+                                setFormPdfName('');
+                                setPdfFileSize('');
+                              }}
+                              className="text-[11px] text-red-500 hover:text-red-700 font-semibold px-2 py-1 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer"
+                              title="Remover ficheiro PDF"
+                            >
+                              Remover
+                            </button>
+                          </div>
+
+                          <div className="flex gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => pdfInputRef.current?.click()}
+                              className="flex-1 py-1.5 px-2 bg-white dark:bg-brand-charcoal hover:bg-gray-100 border border-brand-gray/30 rounded-lg text-[11px] font-semibold text-center transition-colors cursor-pointer"
+                            >
+                              Substituir PDF
+                            </button>
+                            {formPdfData && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const a = document.createElement('a');
+                                  a.href = formPdfData;
+                                  a.download = formPdfName || 'documento.pdf';
+                                  a.click();
+                                }}
+                                className="py-1.5 px-2.5 bg-brand-gold/20 hover:bg-brand-gold/30 text-brand-dark dark:text-brand-gold rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
+                                title="Testar download do ficheiro"
+                              >
+                                Testar Download
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-1.5">
+                          <button
+                            type="button"
+                            onClick={() => pdfInputRef.current?.click()}
+                            disabled={isReadingPdf}
+                            className="w-full flex items-center justify-center space-x-2 px-3 py-3 border border-dashed border-brand-gold bg-brand-gold/10 hover:bg-brand-gold/20 active:scale-95 rounded-xl text-xs font-bold text-brand-dark dark:text-brand-gold cursor-pointer transition-all shadow-xs disabled:opacity-50"
+                          >
+                            <Upload className="w-4 h-4 text-brand-gold shrink-0" />
+                            <span>Carregar PDF do Dispositivo</span>
+                          </button>
+                          <input
+                            type="text"
+                            placeholder="Ou cole URL direto do PDF..."
+                            value={formPdfName}
+                            onChange={(e) => setFormPdfName(e.target.value)}
+                            className="w-full px-3 py-1.5 border border-brand-gray/55 dark:border-brand-medium/25 rounded-xl text-xs bg-transparent focus:ring-1 focus:ring-brand-gold focus:outline-none"
+                          />
+                        </div>
+                      )}
                     </div>
 
-                    <div className="col-span-1">
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="text-xs font-semibold">Ficheiro EPUB</span>
-                        <button
-                          type="button"
-                          onClick={() => epubInputRef.current?.click()}
-                          className="text-[11px] text-brand-gold font-bold hover:underline flex items-center space-x-1 cursor-pointer"
-                        >
-                          <Upload className="w-3.5 h-3.5" />
-                          <span>Carregar EPUB</span>
-                        </button>
+                    <div className="col-span-1 space-y-2">
+                      <div className="flex justify-between items-center">
+                        <label className="text-xs font-semibold flex items-center space-x-1.5">
+                          <BookOpen className="w-3.5 h-3.5 text-brand-gold" />
+                          <span>Ficheiro EPUB Digital</span>
+                        </label>
+                        {isReadingEpub && (
+                          <span className="text-[11px] text-brand-gold flex items-center space-x-1 animate-pulse">
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            <span>A processar...</span>
+                          </span>
+                        )}
                       </div>
-                      <input
-                        type="text"
-                        placeholder="Nome do ficheiro EPUB ou URL"
-                        value={formEpubName}
-                        onChange={(e) => setFormEpubName(e.target.value)}
-                        className="w-full px-3 py-2 border border-brand-gray/55 dark:border-brand-medium/25 rounded-xl text-xs bg-transparent focus:ring-1 focus:ring-brand-gold focus:outline-none"
-                      />
+
+                      {/* EPUB Uploaded Status Card */}
+                      {formEpubData || formEpubName ? (
+                        <div className="p-3 rounded-xl border border-green-500/30 bg-green-500/10 dark:bg-green-500/5 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-2 overflow-hidden">
+                              <div className="p-1.5 rounded-lg bg-green-500/20 text-green-600 dark:text-green-400 shrink-0">
+                                <Check className="w-4 h-4" />
+                              </div>
+                              <div className="overflow-hidden">
+                                <p className="text-xs font-bold text-brand-dark dark:text-white truncate">
+                                  {formEpubName || 'Ficheiro EPUB'}
+                                </p>
+                                <p className="text-[10px] text-green-600 dark:text-green-400 font-semibold">
+                                  {epubFileSize ? `Pronto para guardar (${epubFileSize})` : 'Ficheiro pronto para guardar'}
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFormEpubData('');
+                                setFormEpubName('');
+                                setEpubFileSize('');
+                              }}
+                              className="text-[11px] text-red-500 hover:text-red-700 font-semibold px-2 py-1 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer"
+                              title="Remover ficheiro EPUB"
+                            >
+                              Remover
+                            </button>
+                          </div>
+
+                          <div className="flex gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => epubInputRef.current?.click()}
+                              className="flex-1 py-1.5 px-2 bg-white dark:bg-brand-charcoal hover:bg-gray-100 border border-brand-gray/30 rounded-lg text-[11px] font-semibold text-center transition-colors cursor-pointer"
+                            >
+                              Substituir EPUB
+                            </button>
+                            {formEpubData && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const a = document.createElement('a');
+                                  a.href = formEpubData;
+                                  a.download = formEpubName || 'documento.epub';
+                                  a.click();
+                                }}
+                                className="py-1.5 px-2.5 bg-brand-gold/20 hover:bg-brand-gold/30 text-brand-dark dark:text-brand-gold rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
+                                title="Testar download do ficheiro"
+                              >
+                                Testar Download
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-1.5">
+                          <button
+                            type="button"
+                            onClick={() => epubInputRef.current?.click()}
+                            disabled={isReadingEpub}
+                            className="w-full flex items-center justify-center space-x-2 px-3 py-3 border border-dashed border-brand-gold bg-brand-gold/10 hover:bg-brand-gold/20 active:scale-95 rounded-xl text-xs font-bold text-brand-dark dark:text-brand-gold cursor-pointer transition-all shadow-xs disabled:opacity-50"
+                          >
+                            <Upload className="w-4 h-4 text-brand-gold shrink-0" />
+                            <span>Carregar EPUB do Dispositivo</span>
+                          </button>
+                          <input
+                            type="text"
+                            placeholder="Ou cole URL direto do EPUB..."
+                            value={formEpubName}
+                            onChange={(e) => setFormEpubName(e.target.value)}
+                            className="w-full px-3 py-1.5 border border-brand-gray/55 dark:border-brand-medium/25 rounded-xl text-xs bg-transparent focus:ring-1 focus:ring-brand-gold focus:outline-none"
+                          />
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -803,9 +1004,17 @@ export default function AdminPanel({
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2.5 bg-brand-gold text-brand-dark rounded-xl text-xs font-bold hover:bg-brand-gold-light shadow-md transition-all"
+                    disabled={isReadingPdf || isReadingEpub || isReadingCover}
+                    className="flex items-center space-x-2 px-5 py-2.5 bg-brand-gold text-brand-dark rounded-xl text-xs font-bold hover:bg-brand-gold-light shadow-md transition-all disabled:opacity-50 cursor-pointer"
                   >
-                    {t.save}
+                    {isReadingPdf || isReadingEpub || isReadingCover ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>A processar ficheiros...</span>
+                      </>
+                    ) : (
+                      <span>{t.save}</span>
+                    )}
                   </button>
                 </div>
               </form>

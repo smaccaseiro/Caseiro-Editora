@@ -1,8 +1,8 @@
-import { useState, useEffect, MouseEvent } from 'react';
+import { useState, useEffect, useRef, MouseEvent } from 'react';
 import { translations } from './data/translations';
 import { initialBooks } from './data/initialBooks';
 import { Book, UserProfile, AppLanguage } from './types';
-import { loadBooksFromIndexedDB, saveBooksToIndexedDB } from './utils/dbStorage';
+import { loadBooksFromIndexedDB, saveBooksToIndexedDB, cleanBookForLocalStorage } from './utils/dbStorage';
 import Header from './components/Header';
 import Hero from './components/Hero';
 import BookCard from './components/BookCard';
@@ -22,6 +22,7 @@ export default function App() {
   const [theme, setTheme] = useState<'light' | 'dark'>('dark');
 
   // Core Lists
+  const isInitialLoadDoneRef = useRef(false);
   const [books, setBooks] = useState<Book[]>(() => {
     try {
       const saved = localStorage.getItem('caseiro_books');
@@ -199,20 +200,45 @@ export default function App() {
     }
   }, [activeBookReaderId]);
 
-  // Load books asynchronously from IndexedDB on initial mount
+  // Load books from server first, fallback to IndexedDB
   useEffect(() => {
     let isMounted = true;
-    loadBooksFromIndexedDB().then((idbBooks) => {
-      if (isMounted && idbBooks && Array.isArray(idbBooks) && idbBooks.length > 0) {
-        setBooks((current) => {
-          const map = new Map<string, Book>();
-          initialBooks.forEach((b) => map.set(b.id, b));
-          current.forEach((b) => map.set(b.id, b));
-          idbBooks.forEach((b) => map.set(b.id, b));
-          return Array.from(map.values());
+    fetch('/api/books')
+      .then((res) => {
+        if (!res.ok) throw new Error('API indisponível');
+        return res.json();
+      })
+      .then((serverBooks) => {
+        if (isMounted && Array.isArray(serverBooks) && serverBooks.length > 0) {
+          setBooks((current) => {
+            const map = new Map<string, Book>();
+            initialBooks.forEach((b) => map.set(b.id, b));
+            current.forEach((b) => map.set(b.id, b));
+            serverBooks.forEach((b) => map.set(b.id, b));
+            const merged = Array.from(map.values());
+            saveBooksToIndexedDB(merged);
+            return merged;
+          });
+          isInitialLoadDoneRef.current = true;
+        }
+      })
+      .catch(() => {
+        loadBooksFromIndexedDB().then((idbBooks) => {
+          if (isMounted) {
+            if (idbBooks && Array.isArray(idbBooks) && idbBooks.length > 0) {
+              setBooks((current) => {
+                const map = new Map<string, Book>();
+                initialBooks.forEach((b) => map.set(b.id, b));
+                current.forEach((b) => map.set(b.id, b));
+                idbBooks.forEach((b) => map.set(b.id, b));
+                return Array.from(map.values());
+              });
+            }
+            isInitialLoadDoneRef.current = true;
+          }
         });
-      }
-    });
+      });
+
     return () => {
       isMounted = false;
     };
@@ -225,10 +251,11 @@ export default function App() {
         try {
           localStorage.setItem('caseiro_active_tab', activeTab);
           localStorage.setItem('caseiro_is_admin_mode', String(isAdminMode));
-          localStorage.setItem('caseiro_books', JSON.stringify(books));
+          const sanitized = books.map(cleanBookForLocalStorage);
+          localStorage.setItem('caseiro_books', JSON.stringify(sanitized));
           
           const initialIds = new Set(initialBooks.map((b) => b.id));
-          const customBooks = books.filter((b) => !initialIds.has(b.id));
+          const customBooks = books.filter((b) => !initialIds.has(b.id)).map(cleanBookForLocalStorage);
           localStorage.setItem('caseiro_custom_books', JSON.stringify(customBooks));
 
           if (currentUser) {
@@ -246,20 +273,23 @@ export default function App() {
 
   // Auto save to local storage and IndexedDB on changes
   useEffect(() => {
+    if (!isInitialLoadDoneRef.current) return;
+
     saveBooksToIndexedDB(books);
 
     try {
-      localStorage.setItem('caseiro_books', JSON.stringify(books));
+      const sanitized = books.map(cleanBookForLocalStorage);
+      localStorage.setItem('caseiro_books', JSON.stringify(sanitized));
     } catch (e) {
-      console.error('Erro ao guardar catálogo no armazenamento local:', e);
+      console.warn('Erro ao guardar catálogo no armazenamento local:', e);
     }
 
     try {
       const initialIds = new Set(initialBooks.map((b) => b.id));
-      const customBooks = books.filter((b) => !initialIds.has(b.id));
+      const customBooks = books.filter((b) => !initialIds.has(b.id)).map(cleanBookForLocalStorage);
       localStorage.setItem('caseiro_custom_books', JSON.stringify(customBooks));
     } catch (e) {
-      console.error('Erro ao guardar livros personalizados:', e);
+      console.warn('Erro ao guardar livros personalizados:', e);
     }
   }, [books]);
 
@@ -475,26 +505,41 @@ export default function App() {
   };
 
   // Downloads trigger & real file delivery
-  const handleDownloadBook = (book: Book) => {
+  const handleDownloadBook = (book: Book, format: 'pdf' | 'epub' = 'pdf') => {
     if (!currentUser) {
       setAuthOpen(true);
       return;
     }
 
+    const isEpub = format === 'epub';
+    const fileData = isEpub 
+      ? (book.epubData || (book.epubUrl?.startsWith('data:') ? book.epubUrl : ''))
+      : (book.pdfData || (book.pdfUrl?.startsWith('data:') ? book.pdfUrl : ''));
+    const fileUrl = isEpub ? book.epubUrl : book.pdfUrl;
+    const fileName = isEpub
+      ? (book.epubName || (book.epubUrl && !book.epubUrl.startsWith('data:') ? book.epubUrl.split('/').pop() : '') || `${book.title.replace(/[^a-zA-Z0-9_\-]/g, '_')}.epub`)
+      : (book.pdfName || (book.pdfUrl && !book.pdfUrl.startsWith('data:') ? book.pdfUrl.split('/').pop() : '') || `${book.title.replace(/[^a-zA-Z0-9_\-]/g, '_')}.pdf`);
+
     // Trigger actual browser download
     try {
-      if (book.pdfData || book.epubData) {
-        const fileUrl = book.pdfData || book.epubData || '';
-        const fileName = book.pdfName || book.epubName || `${book.title.replace(/[^a-zA-Z0-9_\-]/g, '_')}.pdf`;
+      if (fileData && fileData.startsWith('data:')) {
         const a = document.createElement('a');
-        a.href = fileUrl;
+        a.href = fileData;
         a.download = fileName;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
+      } else if (fileUrl && (fileUrl.startsWith('/uploads/') || fileUrl.startsWith('http') || fileUrl.startsWith('/api/'))) {
+        const a = document.createElement('a');
+        a.href = fileUrl;
+        a.download = fileName;
+        a.target = '_blank';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
       } else {
-        // Generate a downloadable text/ebook file for sample books
-        const fullText = `CASEIRO EDITORA - EDICAO DIGITAL
+        // Generate formatted digital book text
+        const fullText = `CASEIRO EDITORA - EDICAO DIGITAL (${format.toUpperCase()})
 ========================================
 Título: ${book.title}
 Autor: ${book.author}
@@ -515,11 +560,11 @@ ${(book.content || []).map((chap, i) => `--- Capítulo ${i + 1} ---\n\n${chap}`)
 ----------------------------------------
 Obrigado por utilizar a Caseiro Editora Library.
 `;
-        const blob = new Blob([fullText], { type: 'text/plain;charset=utf-8' });
+        const blob = new Blob([fullText], { type: isEpub ? 'application/epub+zip' : 'application/pdf' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `${book.title.replace(/[^a-zA-Z0-9_\-]/g, '_')}_CaseiroEditora.txt`;
+        a.download = fileName;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -534,9 +579,9 @@ Obrigado por utilizar a Caseiro Editora Library.
         ...currentUser,
         downloads: [...currentUser.downloads, book.id]
       });
-      showToast(`Ficheiro "${book.title}" guardado com sucesso no dispositivo!`, 'success');
+      showToast(`Ficheiro (${format.toUpperCase()}) de "${book.title}" guardado com sucesso!`, 'success');
     } else {
-      showToast(`Ficheiro "${book.title}" descarregado novamente com sucesso.`, 'info');
+      showToast(`Ficheiro (${format.toUpperCase()}) de "${book.title}" descarregado com sucesso.`, 'info');
     }
   };
 
@@ -575,20 +620,69 @@ Obrigado por utilizar a Caseiro Editora Library.
     setActiveBookReader(null);
   };
 
-  // Admin CRUD overrides
-  const handleAddBook = (newBook: Book) => {
+  // Admin CRUD overrides with server sync
+  const handleAddBook = async (newBook: Book) => {
     setBooks((prev) => [newBook, ...prev]);
-    showToast('Novo e-book adicionado com sucesso ao catálogo!');
+    showToast('A guardar e-book e a processar ficheiros...', 'info');
+
+    // Save to IndexedDB immediately
+    saveBooksToIndexedDB([newBook, ...books]);
+
+    // Send to server for persistent storage and disk saving
+    try {
+      const res = await fetch('/api/books', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newBook),
+      });
+      if (res.ok) {
+        const savedBook = await res.json();
+        setBooks((prev) => prev.map((b) => b.id === newBook.id ? savedBook : b));
+        showToast('Novo e-book e ficheiros guardados permanentemente!', 'success');
+      } else {
+        showToast('Guardado no dispositivo (modo offline).', 'success');
+      }
+    } catch {
+      showToast('Guardado no dispositivo (modo offline).', 'success');
+    }
   };
 
-  const handleEditBook = (editedBook: Book) => {
+  const handleEditBook = async (editedBook: Book) => {
     setBooks((prev) => prev.map((b) => b.id === editedBook.id ? editedBook : b));
-    showToast('E-book editado com sucesso.');
+    showToast('A atualizar e-book e ficheiros...', 'info');
+
+    // Save to IndexedDB
+    saveBooksToIndexedDB(books.map((b) => b.id === editedBook.id ? editedBook : b));
+
+    // Send to server
+    try {
+      const res = await fetch(`/api/books/${editedBook.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editedBook),
+      });
+      if (res.ok) {
+        const savedBook = await res.json();
+        setBooks((prev) => prev.map((b) => b.id === editedBook.id ? savedBook : b));
+        showToast('E-book e ficheiros atualizados com sucesso!', 'success');
+      } else {
+        showToast('Alterações guardadas no dispositivo.', 'success');
+      }
+    } catch {
+      showToast('Alterações guardadas no dispositivo.', 'success');
+    }
   };
 
-  const handleRemoveBook = (id: string) => {
+  const handleRemoveBook = async (id: string) => {
     setBooks((prev) => prev.filter((b) => b.id !== id));
     showToast('E-book removido com sucesso.', 'alert');
+    saveBooksToIndexedDB(books.filter((b) => b.id !== id));
+
+    try {
+      await fetch(`/api/books/${id}`, { method: 'DELETE' });
+    } catch {
+      // ignore
+    }
   };
 
   const handleSetFeatured = (id: string) => {
