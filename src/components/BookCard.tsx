@@ -102,16 +102,16 @@ export default function BookCard({
           <h3 className="font-serif font-bold text-base line-clamp-1 text-brand-dark dark:text-white group-hover:text-brand-medium dark:group-hover:text-brand-gold transition-colors">
             {book.title}
           </h3>
-          <p className="text-xs text-gray-500 dark:text-gray-400 font-medium truncate">
+          <p className="text-xs text-gray-600 dark:text-gray-300 font-medium truncate">
             {t.author}: {book.author}
           </p>
-          <p className="text-xs text-gray-400 dark:text-gray-500 line-clamp-2 leading-relaxed pt-1">
+          <p className="text-xs text-gray-500 dark:text-gray-200 line-clamp-2 leading-relaxed pt-1">
             {book.description}
           </p>
         </div>
 
-        <div className="pt-3.5 border-t border-brand-gray/30 dark:border-brand-medium/10 mt-3.5 flex items-center justify-between">
-          <span className="text-[10px] font-mono font-medium text-gray-400 dark:text-gray-500">
+        <div className="pt-3.5 border-t border-brand-gray/30 dark:border-brand-medium/20 mt-3.5 flex items-center justify-between">
+          <span className="text-[11px] font-mono font-medium text-gray-500 dark:text-gray-300">
             © {book.publishedYear}
           </span>
           <button 

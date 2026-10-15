@@ -84,14 +84,14 @@ export default function Footer({
               <span className="font-serif text-2xl font-bold text-white tracking-wide">{t.brand}</span>
               <span className="text-[10px] uppercase bg-brand-gold text-brand-dark px-1.5 py-0.5 rounded font-extrabold font-mono">Premium</span>
             </div>
-            <p className="text-xs text-gray-300 leading-relaxed max-w-sm">
+            <p className="text-sm text-gray-100 leading-relaxed max-w-sm">
               {t.heroSub}
             </p>
 
             {/* Newsletter form with feedback banner */}
             <div className="pt-4 space-y-2.5">
               <h5 className="text-xs font-bold uppercase tracking-wider text-brand-gold">{t.newsletter}</h5>
-              <p className="text-[11px] text-gray-400">{t.newsletterSub}</p>
+              <p className="text-xs text-gray-200 font-medium">{t.newsletterSub}</p>
 
               {newsletterSubscribed ? (
                 <div className="p-3 rounded-lg bg-brand-gold/15 text-brand-gold border border-brand-gold/20 text-xs flex items-center space-x-2 animate-fade-in">
@@ -106,7 +106,7 @@ export default function Footer({
                     placeholder="O seu email principal..."
                     value={newsletterEmail}
                     onChange={(e) => setNewsletterEmail(e.target.value)}
-                    className="flex-grow px-3 py-2 bg-brand-charcoal border border-brand-medium/55 rounded-lg text-xs focus:ring-1 focus:ring-brand-gold focus:outline-none"
+                    className="flex-grow px-3 py-2 bg-brand-charcoal text-white placeholder-gray-400 border border-brand-medium/55 rounded-lg text-xs focus:ring-1 focus:ring-brand-gold focus:outline-none"
                   />
                   <button
                     type="submit"
@@ -134,14 +134,14 @@ export default function Footer({
                 >
                   <button
                     onClick={() => toggleFaq(index)}
-                    className="w-full flex items-center justify-between px-4 py-3 text-xs font-bold hover:bg-brand-medium/20 text-left transition-colors"
+                    className="w-full flex items-center justify-between px-4 py-3 text-xs sm:text-sm font-bold hover:bg-brand-medium/20 text-white text-left transition-colors"
                   >
                     <span>{item.q}</span>
                     {faqOpen === index ? <ChevronUp className="w-4 h-4 text-brand-gold" /> : <ChevronDown className="w-4 h-4 text-brand-gold" />}
                   </button>
 
                   {faqOpen === index && (
-                    <div className="px-4 pb-3 pt-1 text-xs text-gray-300 leading-relaxed border-t border-brand-medium/10">
+                    <div className="px-4 pb-3.5 pt-1.5 text-xs sm:text-sm text-gray-100 leading-relaxed border-t border-brand-medium/20">
                       {item.a}
                     </div>
                   )}
@@ -161,7 +161,7 @@ export default function Footer({
               <div className="p-4 rounded-xl bg-brand-gold/15 text-brand-gold border border-brand-gold/35 text-xs text-center space-y-2 animate-fade-in">
                 <CheckCircle className="w-5 h-5 mx-auto text-brand-gold" />
                 <h6 className="font-bold">Mensagem Enviada!</h6>
-                <p className="text-[10px] text-gray-300">Entraremos em contacto num prazo máximo de 24 horas.</p>
+                <p className="text-xs text-gray-200">Entraremos em contacto num prazo máximo de 24 horas.</p>
               </div>
             ) : (
               <form onSubmit={handleContactSubmit} className="space-y-2.5">
@@ -171,7 +171,7 @@ export default function Footer({
                   placeholder="Nome completo..."
                   value={contactName}
                   onChange={(e) => setContactName(e.target.value)}
-                  className="w-full px-3 py-2 bg-brand-charcoal border border-brand-medium/55 rounded-lg text-xs focus:ring-1 focus:ring-brand-gold focus:outline-none"
+                  className="w-full px-3 py-2 bg-brand-charcoal text-white placeholder-gray-400 border border-brand-medium/55 rounded-lg text-xs focus:ring-1 focus:ring-brand-gold focus:outline-none"
                 />
                 <input
                   type="email"
@@ -179,7 +179,7 @@ export default function Footer({
                   placeholder="Email de contacto..."
                   value={contactEmail}
                   onChange={(e) => setContactEmail(e.target.value)}
-                  className="w-full px-3 py-2 bg-brand-charcoal border border-brand-medium/55 rounded-lg text-xs focus:ring-1 focus:ring-brand-gold focus:outline-none"
+                  className="w-full px-3 py-2 bg-brand-charcoal text-white placeholder-gray-400 border border-brand-medium/55 rounded-lg text-xs focus:ring-1 focus:ring-brand-gold focus:outline-none"
                 />
                 <textarea
                   required
@@ -187,7 +187,7 @@ export default function Footer({
                   rows={3}
                   value={contactMsg}
                   onChange={(e) => setContactMsg(e.target.value)}
-                  className="w-full px-3 py-2 bg-brand-charcoal border border-brand-medium/55 rounded-lg text-xs focus:ring-1 focus:ring-brand-gold focus:outline-none"
+                  className="w-full px-3 py-2 bg-brand-charcoal text-white placeholder-gray-400 border border-brand-medium/55 rounded-lg text-xs focus:ring-1 focus:ring-brand-gold focus:outline-none"
                 />
                 <button
                   type="submit"
@@ -202,21 +202,21 @@ export default function Footer({
         </div>
 
         {/* Global Footer bottom copyright and terms */}
-        <div className="mt-12 pt-6 border-t border-brand-medium/20 flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] text-gray-400">
-          <p>© {new Date().getFullYear()} Caseiro Editora Limitada. Todos os direitos reservados.</p>
-          <div className="flex space-x-4">
+        <div className="mt-12 pt-6 border-t border-brand-medium/30 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-gray-200">
+          <p className="font-medium text-gray-200">© {new Date().getFullYear()} Caseiro Editora Limitada. Todos os direitos reservados.</p>
+          <div className="flex space-x-6 font-medium">
             <button 
               onClick={onOpenPrivacy}
-              className="hover:text-brand-gold flex items-center space-x-1"
+              className="text-gray-200 hover:text-brand-gold flex items-center space-x-1.5 transition-colors cursor-pointer"
             >
-              <Shield className="w-3.5 h-3.5" />
+              <Shield className="w-3.5 h-3.5 text-brand-gold" />
               <span>{t.privacyPolicy}</span>
             </button>
             <button 
               onClick={onOpenTerms}
-              className="hover:text-brand-gold flex items-center space-x-1"
+              className="text-gray-200 hover:text-brand-gold flex items-center space-x-1.5 transition-colors cursor-pointer"
             >
-              <FileText className="w-3.5 h-3.5" />
+              <FileText className="w-3.5 h-3.5 text-brand-gold" />
               <span>{t.termsConditions}</span>
             </button>
           </div>

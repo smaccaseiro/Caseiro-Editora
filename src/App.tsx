@@ -22,20 +22,25 @@ export default function App() {
   const [theme, setTheme] = useState<'light' | 'dark'>('dark');
 
   // Core Lists
+  const DUMMY_IDS = new Set(['1', '2', '3', '4', '5', '6', '7', '8']);
   const isInitialLoadDoneRef = useRef(false);
   const [books, setBooks] = useState<Book[]>(() => {
     try {
-      const deletedIds = new Set<string>(JSON.parse(localStorage.getItem('caseiro_deleted_book_ids') || '[]'));
+      const deletedIds = new Set<string>([
+        ...JSON.parse(localStorage.getItem('caseiro_deleted_book_ids') || '[]'),
+        ...Array.from(DUMMY_IDS),
+      ]);
       const saved = localStorage.getItem('caseiro_books');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          return parsed.filter((b: Book) => !deletedIds.has(b.id));
+          const valid = parsed.filter((b: Book) => !deletedIds.has(b.id) && !DUMMY_IDS.has(b.id));
+          if (valid.length > 0) return valid;
         }
       }
-      return initialBooks.filter((b) => !deletedIds.has(b.id));
+      return initialBooks.filter((b) => !deletedIds.has(b.id) && !DUMMY_IDS.has(b.id));
     } catch {
-      return initialBooks;
+      return initialBooks.filter((b) => !DUMMY_IDS.has(b.id));
     }
   });
 
@@ -201,19 +206,31 @@ export default function App() {
       })
       .then((serverBooks) => {
         if (isMounted && Array.isArray(serverBooks)) {
-          const deletedIds = new Set<string>(JSON.parse(localStorage.getItem('caseiro_deleted_book_ids') || '[]'));
-          const activeBooks = serverBooks.filter((b: Book) => !deletedIds.has(b.id));
+          const deletedIds = new Set<string>([
+            ...JSON.parse(localStorage.getItem('caseiro_deleted_book_ids') || '[]'),
+            ...Array.from(DUMMY_IDS),
+          ]);
+          const activeBooks = serverBooks.filter((b: Book) => !deletedIds.has(b.id) && !DUMMY_IDS.has(b.id));
           setBooks(activeBooks);
           saveBooksToIndexedDB(activeBooks);
+          try {
+            const sanitized = activeBooks.map(cleanBookForLocalStorage);
+            localStorage.setItem('caseiro_books', JSON.stringify(sanitized));
+          } catch {
+            // ignore
+          }
           isInitialLoadDoneRef.current = true;
         }
       })
       .catch(() => {
         loadBooksFromIndexedDB().then((idbBooks) => {
           if (isMounted) {
-            const deletedIds = new Set<string>(JSON.parse(localStorage.getItem('caseiro_deleted_book_ids') || '[]'));
+            const deletedIds = new Set<string>([
+              ...JSON.parse(localStorage.getItem('caseiro_deleted_book_ids') || '[]'),
+              ...Array.from(DUMMY_IDS),
+            ]);
             if (idbBooks && Array.isArray(idbBooks)) {
-              const activeBooks = idbBooks.filter((b: Book) => !deletedIds.has(b.id));
+              const activeBooks = idbBooks.filter((b: Book) => !deletedIds.has(b.id) && !DUMMY_IDS.has(b.id));
               setBooks(activeBooks);
             }
             isInitialLoadDoneRef.current = true;
@@ -307,13 +324,18 @@ export default function App() {
 
   // Synchronize CSS Class for Light / Dark Mode theme triggers
   useEffect(() => {
-    const root = window.document.body;
+    const root = window.document.documentElement;
+    const body = window.document.body;
     if (theme === 'dark') {
       root.classList.add('dark');
-      root.style.backgroundColor = '#04100a'; // dark green background fallback
+      body.classList.add('dark');
+      body.style.backgroundColor = '#04100a';
+      body.style.color = '#f9fafb';
     } else {
       root.classList.remove('dark');
-      root.style.backgroundColor = '#f4f6f4'; // warm white light mode
+      body.classList.remove('dark');
+      body.style.backgroundColor = '#f4f6f4';
+      body.style.color = '#1c2420';
     }
   }, [theme]);
 
@@ -676,25 +698,50 @@ Obrigado por utilizar a Caseiro Editora Library.
       // ignore
     }
 
-    const remainingBooks = books.filter((b) => b.id !== id);
-    setBooks(remainingBooks);
-    showToast('E-book removido com sucesso.', 'alert');
-    saveBooksToIndexedDB(remainingBooks);
+    setBooks((prev) => {
+      const remainingBooks = prev.filter((b) => b.id !== id);
+      saveBooksToIndexedDB(remainingBooks);
+      try {
+        const sanitized = remainingBooks.map(cleanBookForLocalStorage);
+        localStorage.setItem('caseiro_books', JSON.stringify(sanitized));
+        const initialIds = new Set(initialBooks.map((b) => b.id));
+        const customBooks = remainingBooks.filter((b) => !initialIds.has(b.id)).map(cleanBookForLocalStorage);
+        localStorage.setItem('caseiro_custom_books', JSON.stringify(customBooks));
+      } catch {
+        // ignore
+      }
+      return remainingBooks;
+    });
+
+    showToast('Livro removido com sucesso.', 'alert');
 
     try {
-      const sanitized = remainingBooks.map(cleanBookForLocalStorage);
-      localStorage.setItem('caseiro_books', JSON.stringify(sanitized));
-      const initialIds = new Set(initialBooks.map((b) => b.id));
-      const customBooks = remainingBooks.filter((b) => !initialIds.has(b.id)).map(cleanBookForLocalStorage);
-      localStorage.setItem('caseiro_custom_books', JSON.stringify(customBooks));
+      await fetch(`/api/books/${id}`, { method: 'DELETE' });
+    } catch (err) {
+      console.error('Erro ao eliminar livro no servidor:', err);
+    }
+  };
+
+  const handleClearAllBooks = async () => {
+    const allIds = books.map((b) => b.id);
+    setBooks([]);
+    showToast('Todos os livros foram removidos do catálogo.', 'alert');
+    saveBooksToIndexedDB([]);
+
+    try {
+      localStorage.setItem('caseiro_books', JSON.stringify([]));
+      localStorage.setItem('caseiro_custom_books', JSON.stringify([]));
+      const deletedArr: string[] = JSON.parse(localStorage.getItem('caseiro_deleted_book_ids') || '[]');
+      const updatedDeleted = Array.from(new Set([...deletedArr, ...allIds, ...Array.from(DUMMY_IDS)]));
+      localStorage.setItem('caseiro_deleted_book_ids', JSON.stringify(updatedDeleted));
     } catch {
       // ignore
     }
 
     try {
-      await fetch(`/api/books/${id}`, { method: 'DELETE' });
-    } catch {
-      // ignore
+      await fetch('/api/books/clear-all', { method: 'DELETE' });
+    } catch (err) {
+      console.error('Erro ao limpar catálogo no servidor:', err);
     }
   };
 
@@ -1117,6 +1164,7 @@ Obrigado por utilizar a Caseiro Editora Library.
             onAddBook={handleAddBook}
             onEditBook={handleEditBook}
             onRemoveBook={handleRemoveBook}
+            onClearAllBooks={handleClearAllBooks}
             onSetFeatured={handleSetFeatured}
             onAddCategory={handleAddCategory}
             onRemoveCategory={handleRemoveCategory}

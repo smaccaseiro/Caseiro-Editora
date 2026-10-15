@@ -20,31 +20,40 @@ if (!fs.existsSync(uploadsDir)) {
 }
 
 const booksFilePath = path.join(dataDir, 'books.json');
+const DUMMY_IDS = new Set(['1', '2', '3', '4', '5', '6', '7', '8']);
 
-function loadServerBooks() {
+function loadServerBooks(): any[] {
   try {
     if (fs.existsSync(booksFilePath)) {
       const data = fs.readFileSync(booksFilePath, 'utf-8');
       const parsed = JSON.parse(data);
       if (Array.isArray(parsed)) {
-        return parsed;
+        // Strip legacy dummy books if present
+        const cleaned = parsed.filter((b: any) => !DUMMY_IDS.has(String(b.id)));
+        if (cleaned.length !== parsed.length) {
+          saveServerBooks(cleaned);
+        }
+        return cleaned;
       }
     }
   } catch (err) {
     console.error('Erro ao ler books.json:', err);
   }
-  // Initialize with initialBooks ONLY if file does not exist or failed completely
+  // Initialize with initialBooks without dummy books
   try {
-    fs.writeFileSync(booksFilePath, JSON.stringify(initialBooks, null, 2), 'utf-8');
+    const cleanedInitial = initialBooks.filter((b) => !DUMMY_IDS.has(String(b.id)));
+    fs.writeFileSync(booksFilePath, JSON.stringify(cleanedInitial, null, 2), 'utf-8');
+    return cleanedInitial;
   } catch (err) {
     console.error('Erro ao inicializar books.json:', err);
   }
-  return initialBooks;
+  return initialBooks.filter((b) => !DUMMY_IDS.has(String(b.id)));
 }
 
 function saveServerBooks(books: any[]) {
   try {
-    fs.writeFileSync(booksFilePath, JSON.stringify(books, null, 2), 'utf-8');
+    const sanitized = books.filter((b: any) => !DUMMY_IDS.has(String(b.id)));
+    fs.writeFileSync(booksFilePath, JSON.stringify(sanitized, null, 2), 'utf-8');
   } catch (err) {
     console.error('Erro ao gravar books.json:', err);
   }
@@ -289,6 +298,29 @@ async function startServer() {
     } catch (err: any) {
       console.error('Erro ao atualizar livro no servidor:', err);
       res.status(500).json({ error: 'Erro ao atualizar livro no servidor', message: err.message });
+    }
+  });
+
+  // Clear all books endpoint
+  app.delete('/api/books/clear-all', (req, res) => {
+    try {
+      const currentBooks = loadServerBooks();
+      for (const book of currentBooks) {
+        if (book.pdfUrl && book.pdfUrl.startsWith('/uploads/')) {
+          try { fs.unlinkSync(path.join(process.cwd(), book.pdfUrl.replace(/^\//, ''))); } catch {}
+        }
+        if (book.epubUrl && book.epubUrl.startsWith('/uploads/')) {
+          try { fs.unlinkSync(path.join(process.cwd(), book.epubUrl.replace(/^\//, ''))); } catch {}
+        }
+        if (book.coverUrl && book.coverUrl.startsWith('/uploads/')) {
+          try { fs.unlinkSync(path.join(process.cwd(), book.coverUrl.replace(/^\//, ''))); } catch {}
+        }
+      }
+      saveServerBooks([]);
+      res.json({ success: true, count: 0 });
+    } catch (err: any) {
+      console.error('Erro ao limpar catálogo no servidor:', err);
+      res.status(500).json({ error: 'Erro ao limpar catálogo', message: err.message });
     }
   });
 

@@ -11,6 +11,7 @@ interface AdminPanelProps {
   onAddBook: (book: Book) => void;
   onEditBook: (book: Book) => void;
   onRemoveBook: (id: string) => void;
+  onClearAllBooks?: () => void;
   onSetFeatured: (id: string) => void;
   onAddCategory: (category: string) => void;
   onRemoveCategory: (category: string) => void;
@@ -34,6 +35,7 @@ export default function AdminPanel({
   onAddBook,
   onEditBook,
   onRemoveBook,
+  onClearAllBooks,
   onSetFeatured,
   onAddCategory,
   onRemoveCategory,
@@ -309,11 +311,15 @@ export default function AdminPanel({
 
   // Category addition form state
   const [newCatName, setNewCatName] = useState('');
-  const [deletingBookId, setDeletingBookId] = useState<string | null>(null);
+  const [bookToDelete, setBookToDelete] = useState<Book | null>(null);
   const [confirmClearAll, setConfirmClearAll] = useState(false);
 
   const handleClearAllBooks = () => {
-    books.forEach((b) => onRemoveBook(b.id));
+    if (onClearAllBooks) {
+      onClearAllBooks();
+    } else {
+      books.forEach((b) => onRemoveBook(b.id));
+    }
     setConfirmClearAll(false);
   };
 
@@ -1078,46 +1084,23 @@ export default function AdminPanel({
                       </button>
                     </td>
                     <td className="px-6 py-4 text-center">
-                      <div className="flex justify-center items-center space-x-1.5">
+                      <div className="flex justify-center items-center space-x-2">
                         <button
+                          type="button"
                           onClick={() => handleOpenEditBook(b)}
-                          className="p-1.5 rounded bg-blue-500/10 hover:bg-blue-500/20 text-blue-500"
+                          className="p-2 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 transition-colors cursor-pointer"
                           title="Editar"
                         >
                           <Edit className="w-4 h-4" />
                         </button>
-                        {deletingBookId === b.id ? (
-                          <div className="flex items-center space-x-1 animate-fade-in">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                onRemoveBook(b.id);
-                                setDeletingBookId(null);
-                              }}
-                              className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-[11px] font-bold cursor-pointer transition-colors shadow-xs"
-                              title="Confirmar eliminação permanente"
-                            >
-                              Eliminar
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setDeletingBookId(null)}
-                              className="px-1.5 py-1 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded text-[11px] cursor-pointer transition-colors"
-                              title="Cancelar"
-                            >
-                              ✕
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => setDeletingBookId(b.id)}
-                            className="p-1.5 rounded bg-red-500/10 hover:bg-red-500/20 text-red-500 cursor-pointer transition-colors"
-                            title="Eliminar livro"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => setBookToDelete(b)}
+                          className="p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 hover:scale-105 transition-all cursor-pointer"
+                          title="Eliminar permanentemente este livro"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -1256,6 +1239,94 @@ export default function AdminPanel({
                 <span className="text-lg">🇮🇹</span>
                 <span className="text-xs font-semibold">Italiano (it)</span>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Individual Book Permanent Deletion Confirmation Modal */}
+      {bookToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white dark:bg-brand-charcoal text-brand-charcoal dark:text-gray-100 rounded-2xl max-w-md w-full p-6 shadow-2xl border border-red-500/30 space-y-4">
+            <div className="flex items-center space-x-3 text-red-500">
+              <div className="p-3 rounded-full bg-red-500/15">
+                <Trash2 className="w-6 h-6 text-red-500" />
+              </div>
+              <h3 className="font-serif text-lg font-bold">Eliminar Livro Permanentemente</h3>
+            </div>
+            
+            <div className="flex items-start space-x-3 p-3 bg-brand-light dark:bg-brand-dark/40 rounded-xl border border-brand-gray/30 dark:border-brand-medium/20">
+              <img src={bookToDelete.coverUrl} alt={bookToDelete.title} className="w-12 h-16 object-cover rounded shadow-md shrink-0" />
+              <div className="min-w-0">
+                <p className="font-serif font-bold text-sm text-brand-dark dark:text-white truncate">{bookToDelete.title}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-300 mt-0.5">{bookToDelete.author}</p>
+                <p className="text-[11px] text-gray-400 dark:text-gray-400 mt-1">{bookToDelete.category} • {bookToDelete.pages} páginas</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-red-500 font-medium bg-red-500/10 p-2.5 rounded-lg border border-red-500/20">
+              ⚠️ Esta ação removerá o livro, a capa e todos os ficheiros (PDF e EPUB) da base de dados e do servidor de forma definitiva.
+            </p>
+
+            <div className="flex justify-end space-x-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setBookToDelete(null)}
+                className="px-4 py-2.5 rounded-xl border border-gray-300 dark:border-brand-medium/40 text-xs font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-brand-medium/30 transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onRemoveBook(bookToDelete.id);
+                  setBookToDelete(null);
+                }}
+                className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-all cursor-pointer shadow-md flex items-center space-x-1.5"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Sim, Eliminar Livro</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Clear All Books Modal */}
+      {confirmClearAll && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white dark:bg-brand-charcoal text-brand-charcoal dark:text-gray-100 rounded-2xl max-w-md w-full p-6 shadow-2xl border border-red-500/30 space-y-4">
+            <div className="flex items-center space-x-3 text-red-500">
+              <div className="p-3 rounded-full bg-red-500/15">
+                <Trash2 className="w-6 h-6 text-red-500" />
+              </div>
+              <h3 className="font-serif text-lg font-bold">Eliminar TODO o Catálogo?</h3>
+            </div>
+            
+            <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
+              Tem a certeza de que deseja apagar todos os <strong>{books.length}</strong> livros do catálogo?
+            </p>
+
+            <p className="text-xs text-red-500 font-medium bg-red-500/10 p-2.5 rounded-lg border border-red-500/20">
+              ⚠️ Todos os e-books e ficheiros enviados serão removidos do servidor e do armazenamento local.
+            </p>
+
+            <div className="flex justify-end space-x-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmClearAll(false)}
+                className="px-4 py-2.5 rounded-xl border border-gray-300 dark:border-brand-medium/40 text-xs font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-brand-medium/30 transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleClearAllBooks}
+                className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-all cursor-pointer shadow-md flex items-center space-x-1.5"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Sim, Eliminar Todos</span>
+              </button>
             </div>
           </div>
         </div>
