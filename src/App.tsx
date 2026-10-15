@@ -25,24 +25,15 @@ export default function App() {
   const isInitialLoadDoneRef = useRef(false);
   const [books, setBooks] = useState<Book[]>(() => {
     try {
+      const deletedIds = new Set<string>(JSON.parse(localStorage.getItem('caseiro_deleted_book_ids') || '[]'));
       const saved = localStorage.getItem('caseiro_books');
-      const customSaved = localStorage.getItem('caseiro_custom_books');
-      let baseList: Book[] = saved ? JSON.parse(saved) : initialBooks;
-
-      if (customSaved) {
-        const customBooks: Book[] = JSON.parse(customSaved);
-        if (Array.isArray(customBooks)) {
-          for (const cb of customBooks) {
-            const index = baseList.findIndex((b) => b.id === cb.id);
-            if (index >= 0) {
-              baseList[index] = cb;
-            } else {
-              baseList = [cb, ...baseList];
-            }
-          }
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed.filter((b: Book) => !deletedIds.has(b.id));
         }
       }
-      return baseList;
+      return initialBooks.filter((b) => !deletedIds.has(b.id));
     } catch {
       return initialBooks;
     }
@@ -209,30 +200,21 @@ export default function App() {
         return res.json();
       })
       .then((serverBooks) => {
-        if (isMounted && Array.isArray(serverBooks) && serverBooks.length > 0) {
-          setBooks((current) => {
-            const map = new Map<string, Book>();
-            initialBooks.forEach((b) => map.set(b.id, b));
-            current.forEach((b) => map.set(b.id, b));
-            serverBooks.forEach((b) => map.set(b.id, b));
-            const merged = Array.from(map.values());
-            saveBooksToIndexedDB(merged);
-            return merged;
-          });
+        if (isMounted && Array.isArray(serverBooks)) {
+          const deletedIds = new Set<string>(JSON.parse(localStorage.getItem('caseiro_deleted_book_ids') || '[]'));
+          const activeBooks = serverBooks.filter((b: Book) => !deletedIds.has(b.id));
+          setBooks(activeBooks);
+          saveBooksToIndexedDB(activeBooks);
           isInitialLoadDoneRef.current = true;
         }
       })
       .catch(() => {
         loadBooksFromIndexedDB().then((idbBooks) => {
           if (isMounted) {
-            if (idbBooks && Array.isArray(idbBooks) && idbBooks.length > 0) {
-              setBooks((current) => {
-                const map = new Map<string, Book>();
-                initialBooks.forEach((b) => map.set(b.id, b));
-                current.forEach((b) => map.set(b.id, b));
-                idbBooks.forEach((b) => map.set(b.id, b));
-                return Array.from(map.values());
-              });
+            const deletedIds = new Set<string>(JSON.parse(localStorage.getItem('caseiro_deleted_book_ids') || '[]'));
+            if (idbBooks && Array.isArray(idbBooks)) {
+              const activeBooks = idbBooks.filter((b: Book) => !deletedIds.has(b.id));
+              setBooks(activeBooks);
             }
             isInitialLoadDoneRef.current = true;
           }
@@ -622,11 +604,20 @@ Obrigado por utilizar a Caseiro Editora Library.
 
   // Admin CRUD overrides with server sync
   const handleAddBook = async (newBook: Book) => {
-    setBooks((prev) => [newBook, ...prev]);
+    try {
+      const deletedArr: string[] = JSON.parse(localStorage.getItem('caseiro_deleted_book_ids') || '[]');
+      const filteredDeleted = deletedArr.filter((did) => did !== newBook.id);
+      localStorage.setItem('caseiro_deleted_book_ids', JSON.stringify(filteredDeleted));
+    } catch {
+      // ignore
+    }
+
+    const updated = [newBook, ...books.filter((b) => b.id !== newBook.id)];
+    setBooks(updated);
     showToast('A guardar e-book e a processar ficheiros...', 'info');
 
     // Save to IndexedDB immediately
-    saveBooksToIndexedDB([newBook, ...books]);
+    saveBooksToIndexedDB(updated);
 
     // Send to server for persistent storage and disk saving
     try {
@@ -674,9 +665,31 @@ Obrigado por utilizar a Caseiro Editora Library.
   };
 
   const handleRemoveBook = async (id: string) => {
-    setBooks((prev) => prev.filter((b) => b.id !== id));
+    // 1. Mark as permanently deleted in local blacklist
+    try {
+      const deletedArr: string[] = JSON.parse(localStorage.getItem('caseiro_deleted_book_ids') || '[]');
+      if (!deletedArr.includes(id)) {
+        deletedArr.push(id);
+        localStorage.setItem('caseiro_deleted_book_ids', JSON.stringify(deletedArr));
+      }
+    } catch {
+      // ignore
+    }
+
+    const remainingBooks = books.filter((b) => b.id !== id);
+    setBooks(remainingBooks);
     showToast('E-book removido com sucesso.', 'alert');
-    saveBooksToIndexedDB(books.filter((b) => b.id !== id));
+    saveBooksToIndexedDB(remainingBooks);
+
+    try {
+      const sanitized = remainingBooks.map(cleanBookForLocalStorage);
+      localStorage.setItem('caseiro_books', JSON.stringify(sanitized));
+      const initialIds = new Set(initialBooks.map((b) => b.id));
+      const customBooks = remainingBooks.filter((b) => !initialIds.has(b.id)).map(cleanBookForLocalStorage);
+      localStorage.setItem('caseiro_custom_books', JSON.stringify(customBooks));
+    } catch {
+      // ignore
+    }
 
     try {
       await fetch(`/api/books/${id}`, { method: 'DELETE' });

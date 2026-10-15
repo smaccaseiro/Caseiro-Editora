@@ -313,7 +313,7 @@ export default function AdminPanel({
   const [newCatName, setNewCatName] = useState('');
 
   const handleClearAllBooks = () => {
-    if (window.confirm('Tem a certeza que deseja eliminar TODOS os livros do catálogo de exemplo? Esta ação pode ser revertida atualizando o site se necessário.')) {
+    if (window.confirm('Tem a certeza que deseja eliminar TODOS os livros e artigos do catálogo? Esta ação é definitiva e não pode ser desfeita.')) {
       books.forEach((b) => onRemoveBook(b.id));
     }
   };
@@ -1068,9 +1068,13 @@ export default function AdminPanel({
                           <Edit className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => onRemoveBook(b.id)}
-                          className="p-1.5 rounded bg-red-500/10 hover:bg-red-500/20 text-red-500"
-                          title="Eliminar"
+                          onClick={() => {
+                            if (window.confirm(`Tem a certeza que deseja eliminar permanentemente "${b.title}"? O artigo/livro e ficheiros associados serão removidos para sempre.`)) {
+                              onRemoveBook(b.id);
+                            }
+                          }}
+                          className="p-1.5 rounded bg-red-500/10 hover:bg-red-500/20 text-red-500 cursor-pointer transition-colors"
+                          title="Eliminar permanentemente"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>

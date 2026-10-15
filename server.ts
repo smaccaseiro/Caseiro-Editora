@@ -26,14 +26,14 @@ function loadServerBooks() {
     if (fs.existsSync(booksFilePath)) {
       const data = fs.readFileSync(booksFilePath, 'utf-8');
       const parsed = JSON.parse(data);
-      if (Array.isArray(parsed) && parsed.length > 0) {
+      if (Array.isArray(parsed)) {
         return parsed;
       }
     }
   } catch (err) {
     console.error('Erro ao ler books.json:', err);
   }
-  // Initialize with initialBooks if empty or not yet created
+  // Initialize with initialBooks ONLY if file does not exist or failed completely
   try {
     fs.writeFileSync(booksFilePath, JSON.stringify(initialBooks, null, 2), 'utf-8');
   } catch (err) {
@@ -297,6 +297,30 @@ async function startServer() {
     try {
       const { id } = req.params;
       const currentBooks = loadServerBooks();
+      const bookToDelete = currentBooks.find((b: any) => b.id === id);
+
+      // Clean up uploaded physical files if applicable
+      if (bookToDelete) {
+        if (bookToDelete.pdfUrl && bookToDelete.pdfUrl.startsWith('/uploads/')) {
+          const filePath = path.join(process.cwd(), bookToDelete.pdfUrl.replace(/^\//, ''));
+          if (fs.existsSync(filePath)) {
+            try { fs.unlinkSync(filePath); } catch { /* ignore */ }
+          }
+        }
+        if (bookToDelete.epubUrl && bookToDelete.epubUrl.startsWith('/uploads/')) {
+          const filePath = path.join(process.cwd(), bookToDelete.epubUrl.replace(/^\//, ''));
+          if (fs.existsSync(filePath)) {
+            try { fs.unlinkSync(filePath); } catch { /* ignore */ }
+          }
+        }
+        if (bookToDelete.coverUrl && bookToDelete.coverUrl.startsWith('/uploads/')) {
+          const filePath = path.join(process.cwd(), bookToDelete.coverUrl.replace(/^\//, ''));
+          if (fs.existsSync(filePath)) {
+            try { fs.unlinkSync(filePath); } catch { /* ignore */ }
+          }
+        }
+      }
+
       const filtered = currentBooks.filter((b: any) => b.id !== id);
       saveServerBooks(filtered);
       res.json({ success: true, id });
