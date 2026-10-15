@@ -254,7 +254,6 @@ export default function AdminPanel({
       };
       reader.onerror = () => {
         setIsReadingPdf(false);
-        alert('Erro ao processar ficheiro PDF.');
       };
       reader.readAsDataURL(file);
 
@@ -302,7 +301,6 @@ export default function AdminPanel({
       };
       reader.onerror = () => {
         setIsReadingEpub(false);
-        alert('Erro ao processar ficheiro EPUB.');
       };
       reader.readAsDataURL(file);
     }
@@ -311,11 +309,12 @@ export default function AdminPanel({
 
   // Category addition form state
   const [newCatName, setNewCatName] = useState('');
+  const [deletingBookId, setDeletingBookId] = useState<string | null>(null);
+  const [confirmClearAll, setConfirmClearAll] = useState(false);
 
   const handleClearAllBooks = () => {
-    if (window.confirm('Tem a certeza que deseja eliminar TODOS os livros e artigos do catálogo? Esta ação é definitiva e não pode ser desfeita.')) {
-      books.forEach((b) => onRemoveBook(b.id));
-    }
+    books.forEach((b) => onRemoveBook(b.id));
+    setConfirmClearAll(false);
   };
 
   // Stats calculation
@@ -384,7 +383,6 @@ export default function AdminPanel({
     e.preventDefault();
 
     if (isReadingPdf || isReadingEpub || isReadingCover) {
-      alert('Os ficheiros enviados ainda estão a ser processados. Aguarde uns segundos antes de guardar.');
       return;
     }
 
@@ -604,14 +602,35 @@ export default function AdminPanel({
             <h4 className="font-serif font-bold text-lg">Catálogo de Livros</h4>
             <div className="flex items-center space-x-2">
               {books.length > 0 && (
-                <button
-                  onClick={handleClearAllBooks}
-                  className="flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/30 font-bold text-xs transition-all"
-                  title="Eliminar todos os livros de exemplo de uma só vez"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  <span>Eliminar Todos os Livros</span>
-                </button>
+                confirmClearAll ? (
+                  <div className="flex items-center space-x-1.5 p-1 bg-red-500/10 border border-red-500/30 rounded-xl animate-fade-in">
+                    <span className="text-xs font-bold text-red-500 px-2">Eliminar tudo?</span>
+                    <button
+                      type="button"
+                      onClick={handleClearAllBooks}
+                      className="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold text-xs cursor-pointer shadow-xs transition-colors"
+                    >
+                      Sim, eliminar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmClearAll(false)}
+                      className="px-2 py-1 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg text-xs cursor-pointer transition-colors"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmClearAll(true)}
+                    className="flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/30 font-bold text-xs transition-all cursor-pointer"
+                    title="Eliminar todos os livros de uma só vez"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span>Eliminar Todos os Livros</span>
+                  </button>
+                )
               )}
               <button
                 onClick={handleOpenNewBook}
@@ -1067,17 +1086,38 @@ export default function AdminPanel({
                         >
                           <Edit className="w-4 h-4" />
                         </button>
-                        <button
-                          onClick={() => {
-                            if (window.confirm(`Tem a certeza que deseja eliminar permanentemente "${b.title}"? O artigo/livro e ficheiros associados serão removidos para sempre.`)) {
-                              onRemoveBook(b.id);
-                            }
-                          }}
-                          className="p-1.5 rounded bg-red-500/10 hover:bg-red-500/20 text-red-500 cursor-pointer transition-colors"
-                          title="Eliminar permanentemente"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {deletingBookId === b.id ? (
+                          <div className="flex items-center space-x-1 animate-fade-in">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onRemoveBook(b.id);
+                                setDeletingBookId(null);
+                              }}
+                              className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-[11px] font-bold cursor-pointer transition-colors shadow-xs"
+                              title="Confirmar eliminação permanente"
+                            >
+                              Eliminar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeletingBookId(null)}
+                              className="px-1.5 py-1 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded text-[11px] cursor-pointer transition-colors"
+                              title="Cancelar"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setDeletingBookId(b.id)}
+                            className="p-1.5 rounded bg-red-500/10 hover:bg-red-500/20 text-red-500 cursor-pointer transition-colors"
+                            title="Eliminar livro"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
