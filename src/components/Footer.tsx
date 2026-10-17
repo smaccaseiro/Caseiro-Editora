@@ -53,7 +53,7 @@ export default function Footer({
   const faqItems = [
     {
       q: 'Como funciona a assinatura da Caseiro Editora?',
-      a: 'A assinatura funciona como uma mensalidade de streaming (estilo Netflix). Ao assinar o plano Mensal (€6,99) ou o plano Anual (€59,99), ganha acesso imediato e ilimitado para ler e descarregar qualquer livro do catálogo em todos os 6 idiomas suportados.'
+      a: 'A assinatura funciona como uma mensalidade de streaming (estilo Netflix). Ao assinar o plano Mensal (€3,99) ou o plano Anual (€29,99), ganha acesso imediato e ilimitado para ler e descarregar qualquer livro do catálogo em todos os 6 idiomas suportados.'
     },
     {
       q: 'Posso ler os livros de forma offline?',

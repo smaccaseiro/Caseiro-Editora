@@ -164,7 +164,7 @@ async function startServer() {
       const planDescription = plan === 'annual' 
         ? 'Acesso anual ilimitado à totalidade do catálogo de e-books em 6 idiomas.' 
         : 'Acesso mensal ilimitado à totalidade do catálogo de e-books em 6 idiomas.';
-      const amountInCents = plan === 'annual' ? 5999 : 699;
+      const amountInCents = plan === 'annual' ? 2999 : 399;
       const interval = plan === 'annual' ? 'year' : 'month';
 
       // Create Stripe Checkout Session

@@ -65,7 +65,7 @@ export default function InfoModals({
               <p>É estritamente proibido extrair, redistribuir, modificar, piratear, partilhar ou comercializar os ficheiros PDF e EPUB descarregados da biblioteca fora do ecossistema do leitor integrado da Caseiro Editora.</p>
               
               <p className="font-semibold text-brand-dark dark:text-white">3. Renovação Recorrente e Cancelamentos</p>
-              <p>Ao assinar o plano Mensal (€6,99) ou Anual (€59,99), aceita que as cobranças se repitam de forma recorrente e automática ao final do período de faturação respetivo. Pode cancelar a sua assinatura em qualquer momento através do seu painel e as funcionalidades premium manter-se-ão até à expiração do prazo já liquidado.</p>
+              <p>Ao assinar o plano Mensal (€3,99) ou Anual (€29,99), aceita que as cobranças se repitam de forma recorrente e automática ao final do período de faturação respetivo. Pode cancelar a sua assinatura em qualquer momento através do seu painel e as funcionalidades premium manter-se-ão até à expiração do prazo já liquidado.</p>
 
               <p className="font-semibold text-brand-dark dark:text-white">4. Limitação de Responsabilidade</p>
               <p>A Caseiro Editora reserva-se o direito de atualizar o seu catálogo de e-books, categorias e funcionalidades literárias sem aviso prévio para fins de otimização de serviço.</p>

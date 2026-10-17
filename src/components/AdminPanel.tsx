@@ -325,8 +325,8 @@ export default function AdminPanel({
 
   // Stats calculation
   const totalSubscribers = users.filter((u) => u.isSubscribed).length;
-  const monthlyRevenue = users.filter((u) => u.isSubscribed && u.subscriptionPlan === 'monthly').length * 6.99;
-  const annualRevenue = users.filter((u) => u.isSubscribed && u.subscriptionPlan === 'annual').length * 59.99;
+  const monthlyRevenue = users.filter((u) => u.isSubscribed && u.subscriptionPlan === 'monthly').length * 3.99;
+  const annualRevenue = users.filter((u) => u.isSubscribed && u.subscriptionPlan === 'annual').length * 29.99;
   const estimatedTotalAnnualRevenue = monthlyRevenue * 12 + annualRevenue;
 
   const handleOpenNewBook = () => {

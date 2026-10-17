@@ -960,7 +960,7 @@ Obrigado por utilizar a Caseiro Editora Library.
                       onClick={() => setSubscriptionOpen(true)}
                       className="px-8 py-3.5 bg-brand-gold hover:bg-brand-gold-light text-brand-dark font-extrabold rounded-xl shadow-lg hover:shadow-brand-gold/30 transition-all text-sm"
                     >
-                      Desbloquear Biblioteca por €6,99/mês
+                      Desbloquear Biblioteca por €3,99/mês
                     </button>
                   </div>
                 </div>
@@ -1063,7 +1063,7 @@ Obrigado por utilizar a Caseiro Editora Library.
                   <span className="text-xs font-bold uppercase text-brand-medium dark:text-brand-gold tracking-widest">Plano Essencial</span>
                   <h3 className="font-serif text-2xl font-bold mt-2">{t.monthly}</h3>
                   <div className="mt-4 flex items-baseline text-brand-dark dark:text-white">
-                    <span className="text-4xl font-extrabold tracking-tight">€6,99</span>
+                    <span className="text-4xl font-extrabold tracking-tight">€3,99</span>
                     <span className="ml-1 text-sm text-gray-400">/mês</span>
                   </div>
                   <ul className="mt-8 space-y-3.5 text-xs text-gray-500 dark:text-gray-300">
@@ -1104,7 +1104,7 @@ Obrigado por utilizar a Caseiro Editora Library.
                   <span className="text-xs font-bold uppercase text-brand-gold tracking-widest">Acesso Anual Premium</span>
                   <h3 className="font-serif text-2xl font-bold mt-2 text-brand-gold">{t.annual}</h3>
                   <div className="mt-4 flex items-baseline text-brand-dark dark:text-white">
-                    <span className="text-4xl font-extrabold tracking-tight">€59,99</span>
+                    <span className="text-4xl font-extrabold tracking-tight">€29,99</span>
                     <span className="ml-1 text-sm text-gray-400">/ano</span>
                   </div>
                   <ul className="mt-8 space-y-3.5 text-xs text-gray-500 dark:text-gray-300">
@@ -1114,7 +1114,7 @@ Obrigado por utilizar a Caseiro Editora Library.
                     </li>
                     <li className="flex items-start space-x-2.5">
                       <CheckCircle className="w-4.5 h-4.5 text-brand-gold shrink-0 mt-0.5" />
-                      <span className="font-semibold text-brand-medium dark:text-brand-gold">Economia de mais de €23 anuais</span>
+                      <span className="font-semibold text-brand-medium dark:text-brand-gold">Economia de quase €18 anuais</span>
                     </li>
                     <li className="flex items-start space-x-2.5">
                       <CheckCircle className="w-4.5 h-4.5 text-brand-gold shrink-0 mt-0.5" />

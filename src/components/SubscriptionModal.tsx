@@ -35,7 +35,7 @@ export default function SubscriptionModal({
     monthly: {
       id: 'monthly' as const,
       name: t.monthly,
-      price: '6,99',
+      price: '3,99',
       period: 'mês',
       features: [
         'Acesso total à biblioteca em 6 idiomas',
@@ -47,12 +47,12 @@ export default function SubscriptionModal({
     annual: {
       id: 'annual' as const,
       name: t.annual,
-      price: '59,99',
+      price: '29,99',
       period: 'ano',
       badge: t.bestValue,
       features: [
         'Tudo incluído no plano Mensal',
-        'Poupe mais de 30% em comparação com o mensal',
+        'Poupe mais de 37% em comparação com o mensal',
         'Suporte prioritário ao cliente',
         'Acesso antecipado a pré-lançamentos exclusivos'
       ]
