@@ -1,6 +1,17 @@
 import { useState, useEffect, FormEvent, useRef, ChangeEvent } from 'react';
-import { Book, UserProfile, TranslationSet } from '../types';
-import { Plus, Edit, Trash2, CheckCircle, BarChart3, Users, BookOpen, Star, RefreshCw, Upload, Sparkles, FolderPlus, Globe, X, FileText, Download, Check, AlertCircle, Loader2 } from 'lucide-react';
+import * as pdfjsLib from 'pdfjs-dist';
+import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import { Book, ContactMessage, NewsletterSubscriber, UserProfile, TranslationSet } from '../types';
+import {
+  fetchContactMessagesForAdmin,
+  fetchNewsletterSubscribersForAdmin,
+  updateContactMessageStatusInFirestore,
+  deleteContactMessageInFirestore,
+  deleteNewsletterSubscriberInFirestore,
+} from '../firebase';
+import { Plus, Edit, Trash2, CheckCircle, BarChart3, Users, BookOpen, Star, Upload, Sparkles, FolderPlus, Globe, X, FileText, Check, Loader2, Mail, MessageSquare } from 'lucide-react';
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
 interface AdminPanelProps {
   t: TranslationSet;
@@ -42,17 +53,53 @@ export default function AdminPanel({
 }: AdminPanelProps) {
   const initialDraft = getInitialDraft();
 
-  const [activeTab, setActiveTab] = useState<'stats' | 'books' | 'users' | 'taxonomy'>(() => {
+  const [activeTab, setActiveTab] = useState<'stats' | 'books' | 'users' | 'taxonomy' | 'messages'>(() => {
     try {
       const saved = localStorage.getItem('caseiro_admin_panel_tab');
-      if (saved && ['stats', 'books', 'users', 'taxonomy'].includes(saved)) {
-        return saved as 'stats' | 'books' | 'users' | 'taxonomy';
+      if (saved && ['stats', 'books', 'users', 'taxonomy', 'messages'].includes(saved)) {
+        return saved as 'stats' | 'books' | 'users' | 'taxonomy' | 'messages';
       }
     } catch {
       // ignore
     }
     return 'stats';
   });
+
+  const [contactMessages, setContactMessages] = useState<ContactMessage[]>([]);
+  const [newsletterSubscribers, setNewsletterSubscribers] = useState<NewsletterSubscriber[]>([]);
+  const [loadingMessages, setLoadingMessages] = useState(false);
+
+  useEffect(() => {
+    if (activeTab !== 'messages') return;
+    let mounted = true;
+    setLoadingMessages(true);
+    Promise.all([
+      fetchContactMessagesForAdmin().catch(() => []),
+      fetchNewsletterSubscribersForAdmin().catch(() => []),
+      fetch('/api/contact').then((r) => (r.ok ? r.json() : [])).catch(() => []),
+      fetch('/api/newsletter').then((r) => (r.ok ? r.json() : [])).catch(() => []),
+    ])
+      .then(([fsMsgs, fsSubs, apiMsgs, apiSubs]) => {
+        if (!mounted) return;
+        const msgMap = new Map<string, ContactMessage>();
+        [...fsMsgs, ...(Array.isArray(apiMsgs) ? apiMsgs : [])].forEach((m: ContactMessage) => {
+          if (m?.id && !msgMap.has(m.id)) msgMap.set(m.id, m);
+        });
+        setContactMessages(Array.from(msgMap.values()));
+
+        const subMap = new Map<string, NewsletterSubscriber>();
+        [...fsSubs, ...(Array.isArray(apiSubs) ? apiSubs : [])].forEach((s: NewsletterSubscriber) => {
+          if (s?.email && !subMap.has(s.email)) subMap.set(s.email, s);
+        });
+        setNewsletterSubscribers(Array.from(subMap.values()));
+      })
+      .finally(() => {
+        if (mounted) setLoadingMessages(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [activeTab]);
   
   // Book Form state with local storage draft recovery
   const [editingBook, setEditingBook] = useState<Book | null>(initialDraft?.editingBook ?? null);
@@ -239,7 +286,7 @@ export default function AdminPanel({
     e.target.value = '';
   };
 
-  const handlePdfFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
+  const handlePdfFileSelect = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       setFormPdfName(file.name);
@@ -252,15 +299,40 @@ export default function AdminPanel({
         if (result) {
           setFormPdfData(result);
         }
-        setIsReadingPdf(false);
-      };
-      reader.onerror = () => {
-        setIsReadingPdf(false);
       };
       reader.readAsDataURL(file);
 
-      // If readable text file (.txt, .md, .json), extract pages for reader
-      if (file.type.includes('text') || file.name.endsWith('.txt') || file.name.endsWith('.md')) {
+      // Extract real text pages from PDF using pdfjs-dist
+      if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+        try {
+          const buffer = await file.arrayBuffer();
+          const pdfDoc = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
+          if (pdfDoc.numPages > 0) {
+            setFormPages(pdfDoc.numPages);
+          }
+          const extractedPages: string[] = [];
+          const maxExtract = Math.min(pdfDoc.numPages, 60);
+          for (let pageNum = 1; pageNum <= maxExtract; pageNum++) {
+            const page = await pdfDoc.getPage(pageNum);
+            const textContent = await page.getTextContent();
+            const pageText = textContent.items
+              .map((item: any) => ('str' in item ? item.str : ''))
+              .join(' ')
+              .replace(/\s+/g, ' ')
+              .trim();
+            if (pageText) {
+              extractedPages.push(pageText.slice(0, 3500));
+            }
+          }
+          if (extractedPages.length > 0) {
+            setFormCustomContent(extractedPages);
+          }
+        } catch (err) {
+          console.warn('Não foi possível extrair texto automático do PDF:', err);
+        } finally {
+          setIsReadingPdf(false);
+        }
+      } else if (file.type.includes('text') || file.name.endsWith('.txt') || file.name.endsWith('.md')) {
         const textReader = new FileReader();
         textReader.onload = (event) => {
           const text = event.target?.result as string;
@@ -279,8 +351,12 @@ export default function AdminPanel({
             if (current.trim()) pages.push(current.trim());
             if (pages.length > 0) setFormCustomContent(pages);
           }
+          setIsReadingPdf(false);
         };
+        textReader.onerror = () => setIsReadingPdf(false);
         textReader.readAsText(file);
+      } else {
+        setIsReadingPdf(false);
       }
     }
     e.target.value = '';
@@ -343,7 +419,7 @@ export default function AdminPanel({
     setFormPages(250);
     setFormYear(new Date().getFullYear());
     setFormDescription('');
-    setFormCoverUrl('https://images.unsplash.com/photo-1543002588-bfa74002ed7e?auto=format&fit=crop&q=80&w=400');
+    setFormCoverUrl('/default-cover.jpg');
     setFormPdfName('');
     setFormEpubName('');
     setFormPdfData('');
@@ -496,6 +572,15 @@ export default function AdminPanel({
             <FolderPlus className="w-4 h-4" />
             <span>Categorias</span>
           </button>
+          <button
+            onClick={() => setActiveTab('messages')}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              activeTab === 'messages' ? 'bg-brand-gold text-brand-dark shadow-xs' : 'text-gray-400 hover:text-brand-dark dark:hover:text-white'
+            }`}
+          >
+            <Mail className="w-4 h-4" />
+            <span>Mensagens</span>
+          </button>
         </div>
       </div>
 
@@ -510,7 +595,9 @@ export default function AdminPanel({
                 <Users className="w-5 h-5 text-brand-gold" />
               </div>
               <p className="text-3xl font-extrabold mt-3 text-brand-dark dark:text-white">{totalSubscribers}</p>
-              <p className="text-xs text-green-500 font-bold mt-1.5">Taxa de Conversão: {Math.round((totalSubscribers / users.length) * 100)}%</p>
+              <p className="text-xs text-green-500 font-bold mt-1.5">
+                Taxa de Conversão: {users.length > 0 ? Math.round((totalSubscribers / users.length) * 100) : 0}%
+              </p>
             </div>
 
             <div className="p-6 rounded-2xl bg-white dark:bg-brand-charcoal border border-brand-gray/30 dark:border-brand-medium/10 shadow-md">
@@ -782,7 +869,7 @@ export default function AdminPanel({
                             alt="Pré-visualização da Capa"
                             className="w-12 h-16 object-cover rounded-md shadow-xs border border-gray-200 dark:border-gray-700 shrink-0"
                             onError={(e) => {
-                              (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1543002588-bfa74002ed7e?auto=format&fit=crop&q=80&w=400';
+                              (e.target as HTMLImageElement).src = '/default-cover.jpg';
                             }}
                           />
                           <div className="text-xs space-y-0.5 overflow-hidden">
@@ -1240,6 +1327,118 @@ export default function AdminPanel({
                 <span className="text-xs font-semibold">Italiano (it)</span>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONTACT MESSAGES & NEWSLETTER SUBSCRIBERS TAB */}
+      {activeTab === 'messages' && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-fade-in">
+          <div className="lg:col-span-7 bg-white dark:bg-brand-charcoal p-6 rounded-2xl border border-brand-gray/30 dark:border-brand-medium/10 shadow-md space-y-4">
+            <div className="flex items-center justify-between">
+              <h4 className="font-serif font-bold text-base flex items-center space-x-2">
+                <MessageSquare className="w-5 h-5 text-brand-gold" />
+                <span>Mensagens de Contacto ({contactMessages.length})</span>
+              </h4>
+              {loadingMessages && <Loader2 className="w-4 h-4 animate-spin text-brand-gold" />}
+            </div>
+
+            {contactMessages.length > 0 ? (
+              <div className="space-y-3">
+                {contactMessages.map((msg) => (
+                  <div
+                    key={msg.id}
+                    className="p-4 rounded-xl bg-brand-light/45 dark:bg-brand-dark/25 border border-brand-gray/30 dark:border-brand-medium/15 space-y-2"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-bold text-sm text-brand-dark dark:text-white">{msg.name}</p>
+                        <p className="text-xs font-mono text-gray-500 dark:text-gray-400">{msg.email}</p>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <select
+                          value={msg.status}
+                          onChange={async (e) => {
+                            const nextStatus = e.target.value as 'new' | 'read' | 'replied';
+                            setContactMessages((prev) =>
+                              prev.map((m) => (m.id === msg.id ? { ...m, status: nextStatus } : m))
+                            );
+                            try {
+                              await updateContactMessageStatusInFirestore(msg.id, nextStatus);
+                            } catch {
+                              // ignore fallback
+                            }
+                          }}
+                          className="px-2 py-1 rounded text-xs border border-brand-gray/40 dark:border-brand-medium/30 bg-white dark:bg-brand-charcoal"
+                        >
+                          <option value="new">Nova</option>
+                          <option value="read">Lida</option>
+                          <option value="replied">Respondida</option>
+                        </select>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setContactMessages((prev) => prev.filter((m) => m.id !== msg.id));
+                            try {
+                              await deleteContactMessageInFirestore(msg.id);
+                            } catch {
+                              // ignore
+                            }
+                          }}
+                          className="p-1.5 rounded bg-red-500/10 text-red-500 hover:bg-red-500/20 cursor-pointer"
+                          title="Eliminar mensagem"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">{msg.message}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-400 py-8 text-center">Nenhuma mensagem de contacto recebida até ao momento.</p>
+            )}
+          </div>
+
+          <div className="lg:col-span-5 bg-white dark:bg-brand-charcoal p-6 rounded-2xl border border-brand-gray/30 dark:border-brand-medium/10 shadow-md space-y-4">
+            <h4 className="font-serif font-bold text-base flex items-center space-x-2">
+              <Mail className="w-5 h-5 text-brand-gold" />
+              <span>Subscritores Newsletter ({newsletterSubscribers.length})</span>
+            </h4>
+
+            {newsletterSubscribers.length > 0 ? (
+              <div className="space-y-2">
+                {newsletterSubscribers.map((sub) => (
+                  <div
+                    key={sub.id}
+                    className="flex items-center justify-between p-3 rounded-xl bg-brand-light/45 dark:bg-brand-dark/25 border border-brand-gray/25 dark:border-brand-medium/15 text-xs"
+                  >
+                    <div className="min-w-0">
+                      <p className="font-mono font-semibold text-brand-dark dark:text-white truncate">{sub.email}</p>
+                      <p className="text-[11px] text-gray-400 uppercase">{sub.language}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setNewsletterSubscribers((prev) => prev.filter((s) => s.id !== sub.id));
+                        try {
+                          await deleteNewsletterSubscriberInFirestore(sub.id);
+                        } catch {
+                          // ignore
+                        }
+                      }}
+                      className="p-1.5 rounded bg-red-500/10 text-red-500 hover:bg-red-500/20 cursor-pointer shrink-0"
+                      title="Remover subscritor"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-400 py-8 text-center">Ainda sem subscritores na newsletter.</p>
+            )}
           </div>
         </div>
       )}

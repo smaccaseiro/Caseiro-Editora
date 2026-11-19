@@ -1,54 +1,84 @@
 import { useState, useEffect, FormEvent } from 'react';
-import { X, ChevronLeft, ChevronRight, Type, BookOpen, Search, Maximize, Sun, Eye, Landmark, FileText, Download } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, BookOpen, Search, Sun, Eye, Landmark, FileText, Download, Lock, Star } from 'lucide-react';
 import { Book } from '../types';
 
 interface ReaderModalProps {
   book: Book;
   initialPage: number;
+  isSampleMode?: boolean;
+  maxSamplePages?: number;
+  onSubscribe?: () => void;
   onClose: (currentPage: number, progress: number) => void;
 }
 
 export default function ReaderModal({
   book,
   initialPage = 0,
+  isSampleMode = false,
+  maxSamplePages = 2,
+  onSubscribe,
   onClose,
 }: ReaderModalProps) {
-  const [currentPage, setCurrentPage] = useState(initialPage);
+  const hasRealPdf =
+    (typeof book.pdfData === 'string' && book.pdfData.startsWith('data:application/pdf')) ||
+    (typeof book.pdfUrl === 'string' && (book.pdfUrl.startsWith('/uploads/') || book.pdfUrl.startsWith('http')));
+
+  const pdfSource =
+    (book.pdfData && book.pdfData.startsWith('data:') ? book.pdfData : undefined) ||
+    (book.pdfUrl && (book.pdfUrl.startsWith('/uploads/') || book.pdfUrl.startsWith('http')) ? book.pdfUrl : undefined);
+
+  const pages = book.content && book.content.length > 0
+    ? book.content
+    : [
+        `Sinopse e introdução de "${book.title}":\n\n${book.description || 'Obra literária publicada pela Caseiro Editora.'}`,
+        'Este livro encontra-se disponível no formato digital oficial. Utilize o botão "Ver PDF" no topo para visualizar o documento paginado original caso tenha sido carregado.',
+      ];
+
+  const totalPages = pages.length;
+  const effectiveMaxPage = isSampleMode ? Math.min(totalPages - 1, Math.max(0, maxSamplePages - 1)) : totalPages - 1;
+
+  const [currentPage, setCurrentPage] = useState(
+    Math.min(Math.max(0, initialPage), effectiveMaxPage)
+  );
   const [fontSize, setFontSize] = useState<'sm' | 'md' | 'lg' | 'xl'>('md');
   const [theme, setTheme] = useState<'light' | 'sepia' | 'dark'>('sepia');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<{ pageIndex: number; text: string }[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [showOriginalPdf, setShowOriginalPdf] = useState(false);
+  const [showSampleGate, setShowSampleGate] = useState(false);
 
-  const pages = book.content && book.content.length > 0 
-    ? book.content 
-    : [
-        'Página 1: Este é o conteúdo padrão deste fantástico e-book disponibilizado pela Caseiro Editora. Carregado com um layout premium confortável aos olhos do leitor.',
-        'Página 2: Descubra mais aventuras sobre esta fantástica obra literária. Leia no seu telemóvel, tablet ou computador.',
-        'Página 3: A assinatura premium garante-lhe acesso instantâneo e livre a todo o catálogo internacional com capas clássicas inspiradas na Kindle Store.',
-        'Página 4: Fim da leitura. Esperamos que tenha gostado! Continue a descobrir novos livros nas nossas secções recomendadas.'
-      ];
+  const hasCustomExtractedContent = book.content && book.content.length > 0 && !book.content[0]?.startsWith('Capítulo 1: Introdução a ');
+  const [showOriginalPdf, setShowOriginalPdf] = useState(!isSampleMode && hasRealPdf && !hasCustomExtractedContent);
 
-  const totalPages = pages.length;
-
-  // Handle keys for page flips
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowRight') handleNext();
-      if (e.key === 'ArrowLeft') handlePrev();
+      if (e.key === 'Escape') {
+        handleClose();
+      } else if (e.key === 'ArrowRight') {
+        handleNext();
+      } else if (e.key === 'ArrowLeft') {
+        handlePrev();
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentPage]);
+  }, [currentPage, showSampleGate]);
 
   const handleNext = () => {
+    if (isSampleMode && currentPage >= effectiveMaxPage) {
+      setShowSampleGate(true);
+      return;
+    }
     if (currentPage < totalPages - 1) {
       setCurrentPage((prev) => prev + 1);
     }
   };
 
   const handlePrev = () => {
+    if (showSampleGate) {
+      setShowSampleGate(false);
+      return;
+    }
     if (currentPage > 0) {
       setCurrentPage((prev) => prev - 1);
     }
@@ -67,6 +97,7 @@ export default function ReaderModal({
     }
     const results: { pageIndex: number; text: string }[] = [];
     pages.forEach((pageText, index) => {
+      if (isSampleMode && index > effectiveMaxPage) return;
       if (pageText.toLowerCase().includes(searchQuery.toLowerCase())) {
         results.push({ pageIndex: index, text: pageText });
       }
@@ -93,16 +124,18 @@ export default function ReaderModal({
     }
   };
 
-  // Helper to highlight searched term in text
   const highlightText = (text: string, search: string) => {
     if (!search.trim()) return text;
-    const parts = text.split(new RegExp(`(${search})`, 'gi'));
+    const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const parts = text.split(new RegExp(`(${escaped})`, 'gi'));
     return (
       <span>
-        {parts.map((part, i) => 
-          part.toLowerCase() === search.toLowerCase() 
-            ? <mark key={i} className="bg-yellow-300 text-black px-0.5 rounded">{part}</mark> 
-            : part
+        {parts.map((part, i) =>
+          part.toLowerCase() === search.toLowerCase() ? (
+            <mark key={i} className="bg-yellow-300 text-black px-0.5 rounded">{part}</mark>
+          ) : (
+            part
+          )
         )}
       </span>
     );
@@ -113,84 +146,75 @@ export default function ReaderModal({
       {/* Top Header Controls */}
       <div className="flex items-center justify-between px-4 sm:px-6 py-3 border-b border-black/10 dark:border-white/10 shadow-sm z-10 bg-black/5 dark:bg-white/5 backdrop-blur-md">
         <div className="flex items-center space-x-3">
-          <BookOpen className="w-5 h-5 text-brand-gold" />
-          <div className="max-w-[200px] sm:max-w-md truncate">
-            <h4 className="font-serif font-bold text-sm sm:text-base truncate leading-tight">{book.title}</h4>
+          <BookOpen className="w-5 h-5 text-brand-gold shrink-0" />
+          <div className="max-w-[180px] sm:max-w-md truncate text-left">
+            <h4 className="font-serif font-bold text-sm sm:text-base truncate leading-tight">
+              {book.title} {isSampleMode ? '(Amostra Gratuita)' : ''}
+            </h4>
             <p className="text-[11px] opacity-75">{book.author}</p>
           </div>
         </div>
 
-        <div className="flex items-center space-x-2 sm:space-x-4">
-          {/* Search Button */}
+        <div className="flex items-center space-x-2 sm:space-x-3">
           <button
+            type="button"
             onClick={() => setSearchOpen(!searchOpen)}
-            className="p-2 rounded-lg hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+            className="p-2 rounded-lg hover:bg-black/10 dark:hover:bg-white/10 transition-colors cursor-pointer"
             title="Pesquisar no texto"
           >
             <Search className="w-4 h-4" />
           </button>
 
-          {/* Theme Switcher Button Grid */}
           <div className="flex items-center bg-black/10 dark:bg-white/10 p-0.5 rounded-lg border border-black/5">
             <button
+              type="button"
               onClick={() => setTheme('light')}
-              className={`p-1.5 rounded-md ${theme === 'light' ? 'bg-white text-gray-900 shadow-xs' : 'opacity-70'}`}
+              className={`p-1.5 rounded-md cursor-pointer ${theme === 'light' ? 'bg-white text-gray-900 shadow-xs' : 'opacity-70'}`}
               title="Modo Claro"
             >
               <Sun className="w-3.5 h-3.5" />
             </button>
             <button
+              type="button"
               onClick={() => setTheme('sepia')}
-              className={`p-1.5 rounded-md ${theme === 'sepia' ? 'bg-[#dfd4ab] text-[#4a3b1a] shadow-xs' : 'opacity-70'}`}
+              className={`p-1.5 rounded-md cursor-pointer ${theme === 'sepia' ? 'bg-[#dfd4ab] text-[#4a3b1a] shadow-xs' : 'opacity-70'}`}
               title="Modo Sépia"
             >
               <Landmark className="w-3.5 h-3.5" />
             </button>
             <button
+              type="button"
               onClick={() => setTheme('dark')}
-              className={`p-1.5 rounded-md ${theme === 'dark' ? 'bg-brand-dark text-white shadow-xs' : 'opacity-70'}`}
+              className={`p-1.5 rounded-md cursor-pointer ${theme === 'dark' ? 'bg-brand-dark text-white shadow-xs' : 'opacity-70'}`}
               title="Modo Escuro"
             >
               <Eye className="w-3.5 h-3.5" />
             </button>
           </div>
 
-          {/* Font size adjustments */}
-          <div className="flex items-center space-x-1">
-            <button
-              onClick={() => setFontSize('sm')}
-              className={`px-2 py-1 text-xs rounded-md border ${fontSize === 'sm' ? 'bg-black/10 border-black/20 dark:bg-white/10' : 'border-transparent'}`}
-            >
-              A
-            </button>
-            <button
-              onClick={() => setFontSize('md')}
-              className={`px-2 py-1 text-sm rounded-md border ${fontSize === 'md' ? 'bg-black/10 border-black/20 dark:bg-white/10 font-bold' : 'border-transparent'}`}
-            >
-              A
-            </button>
-            <button
-              onClick={() => setFontSize('lg')}
-              className={`px-2 py-1 text-base rounded-md border ${fontSize === 'lg' ? 'bg-black/10 border-black/20 dark:bg-white/10 font-bold' : 'border-transparent'}`}
-            >
-              A+
-            </button>
-            <button
-              onClick={() => setFontSize('xl')}
-              className={`px-2 py-1 text-lg rounded-md border ${fontSize === 'xl' ? 'bg-black/10 border-black/20 dark:bg-white/10 font-bold' : 'border-transparent'}`}
-            >
-              A++
-            </button>
+          <div className="hidden sm:flex items-center space-x-1">
+            {(['sm', 'md', 'lg', 'xl'] as const).map((sz, idx) => (
+              <button
+                key={sz}
+                type="button"
+                onClick={() => setFontSize(sz)}
+                className={`px-2 py-1 text-xs rounded-md border cursor-pointer ${
+                  fontSize === sz ? 'bg-black/10 border-black/20 dark:bg-white/10 font-bold' : 'border-transparent'
+                }`}
+              >
+                {idx === 0 ? 'A-' : idx === 1 ? 'A' : idx === 2 ? 'A+' : 'A++'}
+              </button>
+            ))}
           </div>
 
-          {/* PDF Viewer Toggle and Download if available */}
-          {(book.pdfData || book.pdfUrl) && (
+          {!isSampleMode && pdfSource && (
             <div className="flex items-center space-x-1.5">
               <button
+                type="button"
                 onClick={() => setShowOriginalPdf(!showOriginalPdf)}
                 className={`flex items-center space-x-1 px-2.5 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
-                  showOriginalPdf 
-                    ? 'bg-brand-gold text-brand-dark shadow-xs' 
+                  showOriginalPdf
+                    ? 'bg-brand-gold text-brand-dark shadow-xs'
                     : 'bg-black/10 dark:bg-white/10 hover:bg-black/20 text-current'
                 }`}
                 title={showOriginalPdf ? 'Voltar ao modo leitor de texto' : 'Visualizar ficheiro PDF original'}
@@ -198,28 +222,23 @@ export default function ReaderModal({
                 <FileText className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">{showOriginalPdf ? 'Modo Texto' : 'Ver PDF'}</span>
               </button>
-              <button
-                onClick={() => {
-                  const href = book.pdfData || book.pdfUrl;
-                  if (!href) return;
-                  const a = document.createElement('a');
-                  a.href = href;
-                  a.download = book.pdfName || `${book.title}.pdf`;
-                  if (href.startsWith('/uploads/') || href.startsWith('http')) a.target = '_blank';
-                  a.click();
-                }}
+              <a
+                href={pdfSource}
+                download={book.pdfName || `${book.title}.pdf`}
+                target={pdfSource.startsWith('/uploads/') || pdfSource.startsWith('http') ? '_blank' : undefined}
+                rel="noopener noreferrer"
                 className="p-1.5 rounded-md bg-black/10 dark:bg-white/10 hover:bg-black/20 text-current transition-colors cursor-pointer"
                 title="Descarregar ficheiro PDF"
               >
                 <Download className="w-3.5 h-3.5" />
-              </button>
+              </a>
             </div>
           )}
 
-          {/* Close Reader */}
           <button
+            type="button"
             onClick={handleClose}
-            className="p-2 rounded-full bg-brand-gold hover:bg-brand-gold-light text-brand-dark shadow-sm transition-transform active:scale-95"
+            className="p-2 rounded-full bg-brand-gold hover:bg-brand-gold-light text-brand-dark shadow-sm transition-transform active:scale-95 cursor-pointer"
             title="Fechar Livro"
           >
             <X className="w-4 h-4" />
@@ -227,14 +246,13 @@ export default function ReaderModal({
         </div>
       </div>
 
-      {/* Main Reader Stage (Centered Book Page Layout) */}
+      {/* Main Reader Stage */}
       <div className="flex-grow flex relative overflow-hidden">
-        {/* Search Panel Overlay */}
         {searchOpen && (
-          <div className="absolute top-0 right-0 h-full w-80 max-w-full bg-white dark:bg-brand-charcoal text-brand-charcoal dark:text-gray-100 z-30 shadow-2xl border-l border-brand-gray/30 dark:border-brand-medium/20 flex flex-col p-4 animate-fade-in">
+          <div className="absolute top-0 right-0 h-full w-80 max-w-full bg-white dark:bg-brand-charcoal text-brand-charcoal dark:text-gray-100 z-30 shadow-2xl border-l border-brand-gray/30 dark:border-brand-medium/20 flex flex-col p-4 animate-fade-in text-left">
             <div className="flex items-center justify-between pb-3 border-b border-brand-gray/20 dark:border-brand-medium/10">
               <h5 className="font-bold text-sm">Pesquisar no Livro</h5>
-              <button onClick={() => setSearchOpen(false)} className="p-1 rounded-full hover:bg-black/5 dark:hover:bg-white/5">
+              <button type="button" onClick={() => setSearchOpen(false)} className="p-1 rounded-full hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -247,7 +265,7 @@ export default function ReaderModal({
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="flex-grow px-3 py-1.5 rounded-lg border border-brand-gray/55 dark:border-brand-medium/25 text-xs bg-transparent"
               />
-              <button type="submit" className="px-3 py-1.5 bg-brand-gold text-brand-dark rounded-lg text-xs font-bold">
+              <button type="submit" className="px-3 py-1.5 bg-brand-gold text-brand-dark rounded-lg text-xs font-bold cursor-pointer">
                 Ir
               </button>
             </form>
@@ -259,11 +277,13 @@ export default function ReaderModal({
                   {searchResults.map((res, index) => (
                     <button
                       key={index}
+                      type="button"
                       onClick={() => {
                         setCurrentPage(res.pageIndex);
+                        setShowSampleGate(false);
                         setSearchOpen(false);
                       }}
-                      className="w-full text-left p-2.5 rounded-lg bg-brand-light dark:bg-brand-dark/20 text-xs border border-transparent hover:border-brand-gold transition-all"
+                      className="w-full text-left p-2.5 rounded-lg bg-brand-light dark:bg-brand-dark/20 text-xs border border-transparent hover:border-brand-gold transition-all cursor-pointer"
                     >
                       <p className="font-bold text-brand-medium dark:text-brand-gold mb-1">Pág. {res.pageIndex + 1}</p>
                       <p className="line-clamp-2 text-gray-500 dark:text-gray-400 font-serif italic">"{res.text}"</p>
@@ -279,52 +299,84 @@ export default function ReaderModal({
           </div>
         )}
 
-        {showOriginalPdf && (book.pdfData || book.pdfUrl) ? (
+        {showOriginalPdf && pdfSource && !isSampleMode ? (
           <div className="flex-grow flex flex-col h-full bg-gray-100 dark:bg-gray-900 relative">
             <iframe
-              src={book.pdfData || book.pdfUrl}
+              src={pdfSource}
               title={book.title}
               className="w-full h-full border-0"
             />
           </div>
+        ) : showSampleGate ? (
+          <div className="flex-grow flex items-center justify-center p-6">
+            <div className="max-w-md w-full rounded-2xl bg-brand-dark text-white border border-brand-gold/40 p-8 text-center space-y-5 shadow-2xl animate-fade-in">
+              <div className="w-14 h-14 mx-auto rounded-full bg-brand-gold/15 border border-brand-gold/40 flex items-center justify-center text-brand-gold">
+                <Lock className="w-7 h-7" />
+              </div>
+              <h3 className="font-serif text-2xl font-bold text-white">Fim da Amostra Gratuita</h3>
+              <p className="text-xs text-gray-300 leading-relaxed">
+                Já leu as páginas de pré-visualização de <strong>{book.title}</strong>. Assine por apenas <strong>€3,99/mês</strong> ou <strong>€29,99/ano</strong> para desbloquear toda a obra e o catálogo completo.
+              </p>
+              <div className="flex flex-col gap-2.5 pt-2">
+                {onSubscribe && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleClose();
+                      onSubscribe();
+                    }}
+                    className="w-full py-3.5 rounded-xl bg-brand-gold hover:bg-brand-gold-light text-brand-dark font-bold text-sm flex items-center justify-center space-x-2 shadow-lg cursor-pointer"
+                  >
+                    <Star className="w-4 h-4 fill-brand-dark" />
+                    <span>Assinar e Continuar Leitura</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowSampleGate(false)}
+                  className="w-full py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-semibold text-gray-200 cursor-pointer"
+                >
+                  Voltar à Amostra
+                </button>
+              </div>
+            </div>
+          </div>
         ) : (
           <>
-            {/* Previous page margin clickable trigger */}
             <button
+              type="button"
               onClick={handlePrev}
               disabled={currentPage === 0}
-              className="hidden md:flex items-center justify-center w-20 h-full hover:bg-black/3 dark:hover:bg-white/3 transition-colors disabled:opacity-0"
+              className="hidden md:flex items-center justify-center w-20 h-full hover:bg-black/5 dark:hover:bg-white/5 transition-colors disabled:opacity-0 cursor-pointer"
               title="Página Anterior"
             >
-              <ChevronLeft className="w-8 h-8 opacity-65 group-hover:scale-115" />
+              <ChevronLeft className="w-8 h-8 opacity-65" />
             </button>
 
-            {/* The Page Container itself (looks like a physical open book sheet) */}
             <div className="flex-grow flex items-center justify-center p-4 sm:p-8 md:p-12 overflow-y-auto">
-              <div className="max-w-2xl w-full mx-auto bg-opacity-40 rounded-xl py-6 px-4 sm:px-10 leading-relaxed font-serif text-center md:text-left select-text">
-                {/* Top Chapter Indicator */}
-                <div className="flex items-center justify-between mb-8 pb-3 border-b border-black/10 dark:border-white/10 opacity-60 text-xs font-serif tracking-widest uppercase">
+              <div className="max-w-2xl w-full mx-auto rounded-xl py-6 px-4 sm:px-10 leading-relaxed font-serif text-left select-text">
+                <div className="flex items-center justify-between mb-8 pb-3 border-b border-black/10 dark:border-white/10 opacity-65 text-xs font-serif tracking-widest uppercase">
                   <span>{book.title}</span>
-                  <span>Capítulo {currentPage + 1}</span>
+                  <span>Secção {currentPage + 1}</span>
                 </div>
 
-                {/* Simulated Page Text Content */}
-                <div className={`reader-page ${getFontClass()} indent-8 leading-loose tracking-wide first-letter:text-4xl first-letter:font-bold first-letter:mr-2`}>
-                  {highlightText(pages[currentPage], searchQuery)}
+                <div className={`reader-page ${getFontClass()} leading-loose tracking-wide whitespace-pre-line`}>
+                  {highlightText(pages[currentPage] || '', searchQuery)}
                 </div>
 
-                {/* Bottom Book Page Footnote */}
-                <div className="mt-12 pt-4 border-t border-black/10 dark:border-white/10 opacity-55 text-center text-xs">
-                  {currentPage + 1} de {totalPages}
+                <div className="mt-12 pt-4 border-t border-black/10 dark:border-white/10 opacity-60 text-center text-xs">
+                  {isSampleMode
+                    ? `Amostra gratuita: página ${currentPage + 1} de ${effectiveMaxPage + 1} (${totalPages} total)`
+                    : `${currentPage + 1} de ${totalPages}`}
                 </div>
               </div>
             </div>
 
-            {/* Next page margin clickable trigger */}
             <button
+              type="button"
               onClick={handleNext}
-              disabled={currentPage === totalPages - 1}
-              className="hidden md:flex items-center justify-center w-20 h-full hover:bg-black/3 dark:hover:bg-white/3 transition-colors disabled:opacity-0"
+              disabled={!isSampleMode && currentPage === totalPages - 1}
+              className="hidden md:flex items-center justify-center w-20 h-full hover:bg-black/5 dark:hover:bg-white/5 transition-colors disabled:opacity-0 cursor-pointer"
               title="Próxima Página"
             >
               <ChevronRight className="w-8 h-8 opacity-65" />
@@ -334,37 +386,46 @@ export default function ReaderModal({
       </div>
 
       {/* Bottom Footer Navigation Bar */}
-      <div className="border-t border-black/10 dark:border-white/10 py-3.5 px-4 sm:px-6 flex items-center justify-between bg-black/5 dark:bg-white/5 z-10 select-none">
-        <button
-          onClick={handlePrev}
-          disabled={currentPage === 0}
-          className="flex items-center space-x-1.5 px-4 py-2 rounded-lg bg-black/10 dark:bg-white/10 hover:bg-black/20 text-xs font-semibold disabled:opacity-30"
-        >
-          <ChevronLeft className="w-4 h-4" />
-          <span>Anterior</span>
-        </button>
+      {!showOriginalPdf && (
+        <div className="border-t border-black/10 dark:border-white/10 py-3.5 px-4 sm:px-6 flex items-center justify-between bg-black/5 dark:bg-white/5 z-10 select-none">
+          <button
+            type="button"
+            onClick={handlePrev}
+            disabled={currentPage === 0 && !showSampleGate}
+            className="flex items-center space-x-1.5 px-4 py-2 rounded-lg bg-black/10 dark:bg-white/10 hover:bg-black/20 text-xs font-semibold disabled:opacity-30 cursor-pointer"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            <span>Anterior</span>
+          </button>
 
-        <div className="flex items-center space-x-3 text-xs w-2/5 sm:w-1/3">
-          <input
-            type="range"
-            min="0"
-            max={totalPages - 1}
-            value={currentPage}
-            onChange={(e) => setCurrentPage(parseInt(e.target.value))}
-            className="flex-grow accent-brand-gold cursor-pointer"
-          />
-          <span className="font-mono text-xs opacity-75">{Math.round(((currentPage + 1) / totalPages) * 100)}%</span>
+          <div className="flex items-center space-x-3 text-xs w-2/5 sm:w-1/3">
+            <input
+              type="range"
+              min="0"
+              max={effectiveMaxPage}
+              value={currentPage}
+              onChange={(e) => {
+                setShowSampleGate(false);
+                setCurrentPage(parseInt(e.target.value, 10));
+              }}
+              className="flex-grow accent-brand-gold cursor-pointer"
+            />
+            <span className="font-mono text-xs opacity-75">
+              {Math.round(((currentPage + 1) / (isSampleMode ? effectiveMaxPage + 1 : totalPages)) * 100)}%
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleNext}
+            disabled={!isSampleMode && currentPage === totalPages - 1}
+            className="flex items-center space-x-1.5 px-4 py-2 rounded-lg bg-black/10 dark:bg-white/10 hover:bg-black/20 text-xs font-semibold disabled:opacity-30 cursor-pointer"
+          >
+            <span>{isSampleMode && currentPage >= effectiveMaxPage ? 'Desbloquear' : 'Seguinte'}</span>
+            <ChevronRight className="w-4 h-4" />
+          </button>
         </div>
-
-        <button
-          onClick={handleNext}
-          disabled={currentPage === totalPages - 1}
-          className="flex items-center space-x-1.5 px-4 py-2 rounded-lg bg-black/10 dark:bg-white/10 hover:bg-black/20 text-xs font-semibold disabled:opacity-30"
-        >
-          <span>Seguinte</span>
-          <ChevronRight className="w-4 h-4" />
-        </button>
-      </div>
+      )}
     </div>
   );
 }

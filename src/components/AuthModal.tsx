@@ -1,11 +1,13 @@
-import { useState, FormEvent } from 'react';
-import { X, Mail, Lock, User, AlertCircle, Sparkles, LogIn } from 'lucide-react';
+import { useState } from 'react';
+import { signInWithPopup } from 'firebase/auth';
+import { X, AlertCircle, Loader2, ShieldCheck, BookOpen } from 'lucide-react';
+import { auth, googleProvider } from '../firebase';
 import { TranslationSet } from '../types';
 
 interface AuthModalProps {
   t: TranslationSet;
   onClose: () => void;
-  onLoginSuccess: (email: string, name: string) => void;
+  onLoginSuccess?: (email: string, name: string, uid: string) => void;
 }
 
 export default function AuthModal({
@@ -13,195 +15,104 @@ export default function AuthModal({
   onClose,
   onLoginSuccess,
 }: AuthModalProps) {
-  const [mode, setMode] = useState<'login' | 'register'>('login');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault();
+  const handleGoogleSignIn = async () => {
+    setIsLoading(true);
     setErrorMsg('');
 
-    if (password.length < 4) {
-      setErrorMsg('A palavra-passe deve conter pelo menos 4 caracteres.');
-      return;
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      const fbUser = result.user;
+      const email = (fbUser.email || '').toLowerCase();
+      const name = fbUser.displayName || email.split('@')[0] || 'Leitor';
+
+      if (onLoginSuccess) {
+        onLoginSuccess(email, name, fbUser.uid);
+      }
+      onClose();
+    } catch (err: any) {
+      console.error('Erro na autenticação Google:', err);
+      const code = err?.code || '';
+      if (code === 'auth/popup-closed-by-user') {
+        setErrorMsg('A janela de autenticação foi fechada antes da conclusão.');
+      } else if (code === 'auth/popup-blocked') {
+        setErrorMsg('O navegador bloqueou a janela pop-up. Permita pop-ups para iniciar sessão.');
+      } else {
+        setErrorMsg('Não foi possível iniciar sessão com o Google. Tente novamente.');
+      }
+    } finally {
+      setIsLoading(false);
     }
-
-    if (mode === 'register' && !name.trim()) {
-      setErrorMsg('Por favor, indique o seu nome completo.');
-      return;
-    }
-
-    // Determine name for login
-    let loginName = name || email.split('@')[0];
-    if (email.toLowerCase() === 'smaccaseiro@gmail.com') {
-      loginName = 'Afonso Caseiro (Admin)';
-    }
-
-    onLoginSuccess(email.toLowerCase(), loginName);
-    onClose();
-  };
-
-  const handleOAuthLogin = (provider: 'google' | 'apple') => {
-    // Simulate standard prompt oauth callback latency
-    const simulatedEmail = provider === 'google' ? 'user.google@gmail.com' : 'user.apple@icloud.com';
-    const simulatedName = provider === 'google' ? 'Google Reader' : 'Apple Reader';
-    
-    onLoginSuccess(simulatedEmail, simulatedName);
-    onClose();
   };
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4">
-      {/* Overlay backdrop */}
-      <div 
+      <div
         className="fixed inset-0 bg-brand-darker/80 backdrop-blur-md transition-opacity"
         onClick={onClose}
       />
 
-      {/* Auth Container card */}
       <div className="relative bg-white dark:bg-brand-charcoal text-brand-charcoal dark:text-gray-100 rounded-2xl max-w-md w-full overflow-hidden shadow-2xl border border-brand-gray/30 dark:border-brand-medium/20 z-10 animate-fade-in">
-        
-        {/* Close Button */}
         <button
+          type="button"
           onClick={onClose}
-          className="absolute top-4 right-4 p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/5 text-gray-500 dark:text-gray-400 hover:text-brand-gold transition-colors"
+          className="absolute top-4 right-4 p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/5 text-gray-500 dark:text-gray-400 hover:text-brand-gold transition-colors cursor-pointer"
+          aria-label="Fechar"
         >
           <X className="w-5 h-5" />
         </button>
 
-        <div className="p-6 sm:p-8 space-y-6">
-          <div className="text-center space-y-2">
+        <div className="p-7 sm:p-8 space-y-6">
+          <div className="text-center space-y-3">
+            <div className="w-12 h-12 mx-auto rounded-xl bg-brand-medium/15 dark:bg-brand-medium/40 border border-brand-gold/30 flex items-center justify-center text-brand-gold">
+              <BookOpen className="w-6 h-6" />
+            </div>
             <h3 className="font-serif text-2xl font-bold tracking-tight text-brand-dark dark:text-white">
-              {mode === 'login' ? t.login : t.register}
+              {t.login}
             </h3>
-            <p className="text-xs text-gray-400">Entre na biblioteca digital premium da Caseiro Editora.</p>
+            <p className="text-xs text-gray-500 dark:text-gray-300 leading-relaxed">
+              Aceda à sua conta Caseiro Editora com autenticação segura Google para sincronizar favoritos, progresso de leitura e subscrições entre todos os dispositivos.
+            </p>
           </div>
 
           {errorMsg && (
-            <div className="p-3 rounded-lg bg-red-500/10 text-red-500 border border-red-500/25 text-xs flex items-center space-x-1.5 text-left">
+            <div className="p-3 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/25 text-xs flex items-center space-x-2 text-left">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{errorMsg}</span>
             </div>
           )}
 
-          {/* Core Auth Form */}
-          <form onSubmit={handleSubmit} className="space-y-4 text-left">
-            {mode === 'register' && (
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Nome Completo</label>
-                <div className="relative">
-                  <User className="absolute left-3 top-2.5 h-4.5 w-4.5 text-gray-400" />
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ex: Maria Santos"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className="w-full pl-10 pr-3 py-2 border border-brand-gray/55 dark:border-brand-medium/25 rounded-lg text-sm bg-transparent focus:ring-1 focus:ring-brand-gold focus:outline-none"
-                  />
-                </div>
-              </div>
-            )}
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Endereço de Email</label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-2.5 h-4.5 w-4.5 text-gray-400" />
-                <input
-                  type="email"
-                  required
-                  placeholder="Ex: maria@exemplo.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-10 pr-3 py-2 border border-brand-gray/55 dark:border-brand-medium/25 rounded-lg text-sm bg-transparent focus:ring-1 focus:ring-brand-gold focus:outline-none"
-                />
-              </div>
-              <span className="text-[10px] text-gray-400 mt-1 block">Dica: Faça login com <strong>smaccaseiro@gmail.com</strong> para aceder ao Painel Administrativo!</span>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Palavra-passe</label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-2.5 h-4.5 w-4.5 text-gray-400" />
-                <input
-                  type="password"
-                  required
-                  placeholder="Mínimo 4 caracteres"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-10 pr-3 py-2 border border-brand-gray/55 dark:border-brand-medium/25 rounded-lg text-sm bg-transparent focus:ring-1 focus:ring-brand-gold focus:outline-none"
-                />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              className="w-full py-2.5 mt-2 rounded-lg bg-brand-gold text-brand-dark hover:bg-brand-gold-light font-bold text-sm shadow-md transition-colors flex items-center justify-center space-x-1.5"
-            >
-              <LogIn className="w-4 h-4 text-brand-dark" />
-              <span>{mode === 'login' ? 'Iniciar Sessão' : 'Criar Conta Premium'}</span>
-            </button>
-          </form>
-
-          {/* Direct 1-Click Admin Login Option */}
-          <div className="pt-2">
-            <button
-              type="button"
-              onClick={() => {
-                onLoginSuccess('smaccaseiro@gmail.com', 'Afonso Caseiro (Admin)');
-                onClose();
-              }}
-              className="w-full py-2.5 px-3 rounded-lg bg-brand-darker/60 hover:bg-brand-dark border border-brand-gold/50 hover:border-brand-gold text-brand-gold text-xs font-semibold flex items-center justify-center space-x-2 transition-all shadow-sm group"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-brand-gold group-hover:rotate-12 transition-transform" />
-              <span>Entrar Imediatamente como Administrador (1 Clique)</span>
-            </button>
-            <p className="text-[10px] text-gray-400 text-center mt-1">Conta Admin: smaccaseiro@gmail.com</p>
-          </div>
-
-          {/* Social login buttons */}
-          <div className="space-y-3.5 border-t border-brand-gray/20 dark:border-brand-medium/10 pt-4 text-center">
-            <p className="text-xs text-gray-400 font-medium">Ou aceda através de</p>
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                onClick={() => handleOAuthLogin('google')}
-                className="flex items-center justify-center space-x-1.5 py-2 border border-brand-gray/55 dark:border-brand-medium/25 rounded-lg text-xs font-semibold bg-transparent hover:bg-brand-medium/5"
-              >
-                <span>Google Connection</span>
-              </button>
-              <button
-                onClick={() => handleOAuthLogin('apple')}
-                className="flex items-center justify-center space-x-1.5 py-2 border border-brand-gray/55 dark:border-brand-medium/25 rounded-lg text-xs font-semibold bg-transparent hover:bg-brand-medium/5"
-              >
-                <span>Apple Security</span>
-              </button>
-            </div>
-          </div>
-
-          <div className="text-center text-xs">
-            {mode === 'login' ? (
-              <p className="text-gray-400">
-                Ainda não tem conta?{' '}
-                <button 
-                  onClick={() => setMode('register')} 
-                  className="text-brand-medium dark:text-brand-gold font-bold hover:underline"
-                >
-                  Registe-se agora
-                </button>
-              </p>
+          <button
+            type="button"
+            disabled={isLoading}
+            onClick={handleGoogleSignIn}
+            className="w-full py-3.5 px-4 rounded-xl bg-brand-gold hover:bg-brand-gold-light text-brand-dark font-bold text-sm shadow-md transition-all flex items-center justify-center space-x-3 disabled:opacity-60 cursor-pointer"
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin text-brand-dark" />
+                <span>A autenticar com segurança...</span>
+              </>
             ) : (
-              <p className="text-gray-400">
-                Já possui uma conta ativa?{' '}
-                <button 
-                  onClick={() => setMode('login')} 
-                  className="text-brand-medium dark:text-brand-gold font-bold hover:underline"
-                >
-                  Iniciar Sessão
-                </button>
-              </p>
+              <>
+                <svg className="w-5 h-5" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    fill="currentColor"
+                    d="M21.35 11.1h-9.17v2.73h6.51c-.33 3.81-3.5 5.44-6.5 5.44C8.36 19.27 5 16.25 5 12c0-4.1 3.2-7.27 7.2-7.27 3.09 0 4.9 1.97 4.9 1.97L19 4.72S16.56 2 12.1 2C6.42 2 2.03 6.8 2.03 12c0 5.05 4.13 10 10.22 10 5.35 0 9.25-3.67 9.25-9.09 0-1.15-.15-1.81-.15-1.81Z"
+                  />
+                </svg>
+                <span>Continuar com Google</span>
+              </>
             )}
+          </button>
+
+          <div className="pt-4 border-t border-brand-gray/25 dark:border-brand-medium/20 flex items-start space-x-2.5 text-left">
+            <ShieldCheck className="w-4 h-4 text-brand-gold shrink-0 mt-0.5" />
+            <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
+              Sessão protegida por Firebase Authentication. O acesso de administração é validado automaticamente apenas para a conta verificada do editor.
+            </p>
           </div>
         </div>
       </div>

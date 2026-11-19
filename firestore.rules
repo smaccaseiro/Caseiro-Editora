@@ -1,0 +1,267 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Primitive Helpers ---
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isVerifiedUser() && request.auth.uid == userId;
+    }
+
+    function isBootstrappedAdmin() {
+      return isVerifiedUser() && request.auth.token.email == 'smaccaseiro@gmail.com';
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin() || (
+        isVerifiedUser() &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.size() >= 3 && email.size() <= 254 && email.matches('^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$');
+    }
+
+    // --- Validation Blueprints ---
+    function isValidBook(data) {
+      return data.keys().hasAll([
+          'id', 'title', 'author', 'category', 'language',
+          'pages', 'publishedYear', 'description', 'coverUrl',
+          'isFeatured', 'content', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'title', 'author', 'category', 'language',
+          'pages', 'publishedYear', 'description', 'coverUrl',
+          'pdfUrl', 'epubUrl', 'pdfName', 'epubName',
+          'isFeatured', 'content', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 200
+        && data.author is string && data.author.size() >= 1 && data.author.size() <= 150
+        && data.category is string && data.category.size() >= 1 && data.category.size() <= 80
+        && data.language is string && data.language in ['pt', 'en', 'de', 'es', 'fr', 'it']
+        && data.pages is number && data.pages >= 1 && data.pages <= 20000
+        && data.publishedYear is number && data.publishedYear >= 1450 && data.publishedYear <= 2100
+        && data.description is string && data.description.size() <= 3000
+        && data.coverUrl is string && data.coverUrl.size() >= 1 && data.coverUrl.size() <= 200000
+        && (!('pdfUrl' in data) || (data.pdfUrl is string && data.pdfUrl.size() <= 1000))
+        && (!('epubUrl' in data) || (data.epubUrl is string && data.epubUrl.size() <= 1000))
+        && (!('pdfName' in data) || (data.pdfName is string && data.pdfName.size() <= 255))
+        && (!('epubName' in data) || (data.epubName is string && data.epubName.size() <= 255))
+        && data.isFeatured is bool
+        && data.content is list && data.content.size() <= 200
+        && (data.content.size() == 0 || data.content[0] is string)
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidCategory(data) {
+      return data.keys().hasAll(['name', 'createdAt'])
+        && data.keys().hasOnly(['name', 'createdAt'])
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 80
+        && data.createdAt is timestamp;
+    }
+
+    function isValidUserProfile(data, userId) {
+      return data.keys().hasAll([
+          'uid', 'email', 'name', 'isAdmin', 'isSubscribed',
+          'favorites', 'readingHistory', 'downloads', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'email', 'name', 'isAdmin', 'isSubscribed',
+          'subscriptionPlan', 'subscriptionRenewal', 'stripeSessionId',
+          'favorites', 'readingHistory', 'downloads', 'updatedAt'
+        ])
+        && data.uid is string && isValidId(data.uid) && data.uid == userId
+        && isValidEmail(data.email)
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 120
+        && data.isAdmin is bool
+        && data.isSubscribed is bool
+        && (!('subscriptionPlan' in data) || (data.subscriptionPlan is string && data.subscriptionPlan in ['monthly', 'annual', 'none']))
+        && (!('subscriptionRenewal' in data) || (data.subscriptionRenewal is string && data.subscriptionRenewal.size() <= 32))
+        && (!('stripeSessionId' in data) || (data.stripeSessionId is string && data.stripeSessionId.size() <= 200))
+        && data.favorites is list && data.favorites.size() <= 500
+        && (data.favorites.size() == 0 || data.favorites[0] is string)
+        && data.readingHistory is list && data.readingHistory.size() <= 500
+        && (data.readingHistory.size() == 0 || data.readingHistory[0] is map)
+        && data.downloads is list && data.downloads.size() <= 500
+        && (data.downloads.size() == 0 || data.downloads[0] is string)
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAdminRole(data, userId) {
+      return data.keys().hasAll(['uid', 'email', 'grantedAt'])
+        && data.keys().hasOnly(['uid', 'email', 'grantedAt'])
+        && isValidId(data.uid) && data.uid == userId
+        && isValidEmail(data.email)
+        && data.grantedAt is timestamp;
+    }
+
+    function isValidContactMessage(data) {
+      return data.keys().hasAll(['name', 'email', 'message', 'status', 'createdAt'])
+        && data.keys().hasOnly(['name', 'email', 'message', 'status', 'createdAt'])
+        && data.name is string && data.name.size() >= 2 && data.name.size() <= 120
+        && isValidEmail(data.email)
+        && data.message is string && data.message.size() >= 5 && data.message.size() <= 2000
+        && data.status is string && data.status in ['new', 'read', 'replied']
+        && data.createdAt is timestamp;
+    }
+
+    function isValidNewsletterSubscriber(data) {
+      return data.keys().hasAll(['email', 'language', 'createdAt'])
+        && data.keys().hasOnly(['email', 'language', 'createdAt'])
+        && isValidEmail(data.email)
+        && data.language is string && data.language in ['pt', 'en', 'de', 'es', 'fr', 'it']
+        && data.createdAt is timestamp;
+    }
+
+    // --- Collection Rules ---
+
+    // Connection validation document
+    match /test/{docId} {
+      allow get: if docId == 'connection';
+    }
+
+    // Books Catalog (public read for browsing & sample preview, admin-only writes)
+    match /books/{bookId} {
+      allow get: if isValidId(bookId);
+      allow list: if resource.data.title is string;
+      allow create: if isAdmin()
+        && isValidId(bookId)
+        && isValidBook(incoming())
+        && incoming().id == bookId
+        && incoming().updatedAt == request.time;
+      allow update: if isAdmin()
+        && isValidId(bookId)
+        && isValidBook(incoming())
+        && incoming().id == existing().id
+        && incoming().updatedAt == request.time;
+      allow delete: if isAdmin() && isValidId(bookId);
+    }
+
+    // Categories Taxonomy
+    match /categories/{categoryId} {
+      allow get: if isValidId(categoryId);
+      allow list: if resource.data.name is string;
+      allow create: if isAdmin()
+        && isValidId(categoryId)
+        && isValidCategory(incoming())
+        && incoming().createdAt == request.time;
+      allow update: if isAdmin()
+        && isValidId(categoryId)
+        && isValidCategory(incoming())
+        && incoming().createdAt == existing().createdAt;
+      allow delete: if isAdmin() && isValidId(categoryId);
+    }
+
+    // User Profiles (PII protected: owner or admin only)
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin() || (isVerifiedUser() && resource.data.uid == request.auth.uid);
+
+      allow create: if isValidId(userId)
+        && isOwner(userId)
+        && isValidUserProfile(incoming(), userId)
+        && incoming().updatedAt == request.time
+        && (incoming().isAdmin == false || isBootstrappedAdmin());
+
+      allow update: if isValidId(userId)
+        && isValidUserProfile(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin()
+          || (
+            isOwner(userId)
+            && incoming().isAdmin == existing().isAdmin
+            && (
+              // Action: Update reading preferences, favorites, history, downloads, name
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'name', 'favorites', 'readingHistory', 'downloads', 'updatedAt'
+              ])
+              ||
+              // Action: Update subscription after verified Stripe session or cancel
+              (
+                incoming().diff(existing()).affectedKeys().hasOnly([
+                  'isSubscribed', 'subscriptionPlan', 'subscriptionRenewal', 'stripeSessionId', 'updatedAt'
+                ])
+                && (
+                  incoming().isSubscribed == false
+                  || ('stripeSessionId' in incoming() && incoming().stripeSessionId is string && incoming().stripeSessionId.size() >= 10)
+                )
+              )
+            )
+          )
+        );
+
+      allow delete: if isAdmin() && isValidId(userId);
+    }
+
+    // Trusted Admins Registry
+    match /admins/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isBootstrappedAdmin());
+      allow list: if isBootstrappedAdmin();
+      allow create: if isValidId(userId)
+        && isBootstrappedAdmin()
+        && isValidAdminRole(incoming(), userId)
+        && incoming().grantedAt == request.time;
+      allow update: if isValidId(userId)
+        && isBootstrappedAdmin()
+        && isValidAdminRole(incoming(), userId)
+        && incoming().grantedAt == existing().grantedAt;
+      allow delete: if isValidId(userId) && isBootstrappedAdmin();
+    }
+
+    // Contact Messages (public submission with strict schema, admin-only read/manage)
+    match /contactMessages/{messageId} {
+      allow get: if isValidId(messageId) && isAdmin();
+      allow list: if isAdmin();
+      allow create: if isValidId(messageId)
+        && isValidContactMessage(incoming())
+        && incoming().status == 'new'
+        && incoming().createdAt == request.time;
+      allow update: if isValidId(messageId)
+        && isAdmin()
+        && isValidContactMessage(incoming())
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status']);
+      allow delete: if isValidId(messageId) && isAdmin();
+    }
+
+    // Newsletter Subscribers (public subscription with strict schema, admin-only read/manage)
+    match /newsletterSubscribers/{subscriberId} {
+      allow get: if isValidId(subscriberId) && isAdmin();
+      allow list: if isAdmin();
+      allow create: if isValidId(subscriberId)
+        && isValidNewsletterSubscriber(incoming())
+        && incoming().createdAt == request.time;
+      allow update: if false;
+      allow delete: if isValidId(subscriberId) && isAdmin();
+    }
+  }
+}

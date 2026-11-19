@@ -1,0 +1,251 @@
+{
+  "entities": {
+    "Book": {
+      "title": "Book",
+      "description": "Catalog metadata and readable chapter pages for a digital e-book.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "author": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 150
+        },
+        "category": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "language": {
+          "type": "string",
+          "enum": ["pt", "en", "de", "es", "fr", "it"],
+          "maxLength": 5
+        },
+        "pages": {
+          "type": "number"
+        },
+        "publishedYear": {
+          "type": "number"
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 3000
+        },
+        "coverUrl": {
+          "type": "string",
+          "maxLength": 200000
+        },
+        "pdfUrl": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "epubUrl": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "pdfName": {
+          "type": "string",
+          "maxLength": 255
+        },
+        "epubName": {
+          "type": "string",
+          "maxLength": 255
+        },
+        "isFeatured": {
+          "type": "boolean"
+        },
+        "content": {
+          "type": "array"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["id", "title", "author", "category", "language", "pages", "publishedYear", "description", "coverUrl", "isFeatured", "content"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Book category taxonomy item.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["name", "createdAt"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated reader profile, subscription status, and reading state (contains PII).",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 254,
+          "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "isAdmin": {
+          "type": "boolean"
+        },
+        "isSubscribed": {
+          "type": "boolean"
+        },
+        "subscriptionPlan": {
+          "type": "string",
+          "enum": ["monthly", "annual", "none"],
+          "maxLength": 16
+        },
+        "subscriptionRenewal": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "stripeSessionId": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "favorites": {
+          "type": "array"
+        },
+        "readingHistory": {
+          "type": "array"
+        },
+        "downloads": {
+          "type": "array"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "email", "name", "isAdmin", "isSubscribed", "favorites", "readingHistory", "downloads", "updatedAt"]
+    },
+    "AdminRole": {
+      "title": "AdminRole",
+      "description": "Trusted administrator lookup document keyed by UID.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 254,
+          "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+        },
+        "grantedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "email", "grantedAt"]
+    },
+    "ContactMessage": {
+      "title": "ContactMessage",
+      "description": "Reader contact inquiry submitted via the website footer form.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 254,
+          "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+        },
+        "message": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 2000
+        },
+        "status": {
+          "type": "string",
+          "enum": ["new", "read", "replied"],
+          "maxLength": 16
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["name", "email", "message", "status", "createdAt"]
+    },
+    "NewsletterSubscriber": {
+      "title": "NewsletterSubscriber",
+      "description": "Newsletter subscription email record.",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "maxLength": 254,
+          "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+        },
+        "language": {
+          "type": "string",
+          "enum": ["pt", "en", "de", "es", "fr", "it"],
+          "maxLength": 5
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["email", "language", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/books/{bookId}": {
+      "schema": { "$ref": "#/entities/Book" },
+      "description": "Digital e-book catalog metadata and sample/full chapter text."
+    },
+    "/categories/{categoryId}": {
+      "schema": { "$ref": "#/entities/Category" },
+      "description": "Supported book categories."
+    },
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Private user profiles, subscriptions, favorites, downloads, and reading progress."
+    },
+    "/admins/{userId}": {
+      "schema": { "$ref": "#/entities/AdminRole" },
+      "description": "Trusted administrator UIDs."
+    },
+    "/contactMessages/{messageId}": {
+      "schema": { "$ref": "#/entities/ContactMessage" },
+      "description": "Inbound customer support messages."
+    },
+    "/newsletterSubscribers/{subscriberId}": {
+      "schema": { "$ref": "#/entities/NewsletterSubscriber" },
+      "description": "Newsletter mailing list entries."
+    }
+  }
+}

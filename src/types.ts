@@ -18,21 +18,41 @@ export interface Book {
   publishedYear: number;
 }
 
+export interface ReadingHistoryItem {
+  bookId: string;
+  lastRead: string;
+  progress: number; // percentage
+  currentPage: number;
+}
+
 export interface UserProfile {
+  uid?: string;
   email: string;
   name: string;
   isAdmin: boolean;
   isSubscribed: boolean;
   subscriptionPlan?: 'monthly' | 'annual';
   subscriptionRenewal?: string;
+  stripeSessionId?: string;
   favorites: string[]; // book ids
-  readingHistory: {
-    bookId: string;
-    lastRead: string;
-    progress: number; // percentage
-    currentPage: number;
-  }[];
+  readingHistory: ReadingHistoryItem[];
   downloads: string[]; // book ids
+}
+
+export interface ContactMessage {
+  id: string;
+  name: string;
+  email: string;
+  message: string;
+  status: 'new' | 'read' | 'replied';
+  createdAt: string;
+}
+
+export interface NewsletterSubscriber {
+  id: string;
+  email: string;
+  language: string;
+  createdAt: string;
 }
 
 export interface SystemStats {
@@ -52,6 +72,7 @@ export interface TranslationSet {
   heroSub: string;
   getStarted: string;
   subscribeNow: string;
+  readSample: string;
   locked: string;
   subscribeToUnlock: string;
   viewDetails: string;

@@ -20,7 +20,29 @@ if (!fs.existsSync(uploadsDir)) {
 }
 
 const booksFilePath = path.join(dataDir, 'books.json');
+const contactFilePath = path.join(dataDir, 'contactMessages.json');
+const newsletterFilePath = path.join(dataDir, 'newsletter.json');
 const DUMMY_IDS = new Set(['1', '2', '3', '4', '5', '6', '7', '8']);
+
+function loadJsonArray(filePath: string): any[] {
+  try {
+    if (fs.existsSync(filePath)) {
+      const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (err) {
+    console.error(`Erro ao ler ${filePath}:`, err);
+  }
+  return [];
+}
+
+function saveJsonArray(filePath: string, data: any[]) {
+  try {
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
+  } catch (err) {
+    console.error(`Erro ao gravar ${filePath}:`, err);
+  }
+}
 
 function loadServerBooks(): any[] {
   try {
@@ -167,10 +189,15 @@ async function startServer() {
       const amountInCents = plan === 'annual' ? 2999 : 399;
       const interval = plan === 'annual' ? 'year' : 'month';
 
+      const productImages = origin.startsWith('https://') ? [`${origin}/default-cover.jpg`] : undefined;
+
       // Create Stripe Checkout Session
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ['card'],
         customer_email: email || undefined,
+        metadata: {
+          plan,
+        },
         line_items: [
           {
             price_data: {
@@ -178,7 +205,7 @@ async function startServer() {
               product_data: {
                 name: planName,
                 description: planDescription,
-                images: ['https://images.unsplash.com/photo-1544947950-fa07a98d237f?auto=format&fit=crop&q=80&w=300'],
+                ...(productImages ? { images: productImages } : {}),
               },
               unit_amount: amountInCents,
               recurring: {
@@ -189,7 +216,7 @@ async function startServer() {
           },
         ],
         mode: 'subscription',
-        success_url: `${origin}/?payment=success&plan=${plan}`,
+        success_url: `${origin}/?payment=success&session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${origin}/?payment=cancel`,
       });
 
@@ -208,6 +235,106 @@ async function startServer() {
         message: err.message 
       });
     }
+  });
+
+  // Verify Stripe Checkout Session server-side before activating subscription
+  app.post('/api/verify-checkout-session', async (req, res) => {
+    try {
+      const { sessionId } = req.body;
+      if (!sessionId || typeof sessionId !== 'string' || !sessionId.startsWith('cs_')) {
+        return res.status(400).json({ paid: false, error: 'ID de sessão Stripe inválido.' });
+      }
+
+      const stripe = getStripeClient();
+      const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+      if (session.payment_status !== 'paid') {
+        return res.status(400).json({
+          paid: false,
+          status: session.payment_status,
+          error: 'O pagamento ainda não foi confirmado pelo Stripe.',
+        });
+      }
+
+      const plan: 'monthly' | 'annual' =
+        session.metadata?.plan === 'annual' || session.amount_total === 2999
+          ? 'annual'
+          : 'monthly';
+
+      return res.json({
+        paid: true,
+        plan,
+        sessionId: session.id,
+        customerEmail: session.customer_details?.email || session.customer_email || null,
+      });
+    } catch (err: any) {
+      console.error('Erro ao verificar sessão Stripe:', err);
+      return res.status(500).json({
+        paid: false,
+        error: 'Não foi possível validar a sessão de pagamento.',
+        message: err.message,
+      });
+    }
+  });
+
+  // --- CONTACT & NEWSLETTER ROUTES ---
+
+  app.post('/api/contact', (req, res) => {
+    try {
+      const { name, email, message } = req.body || {};
+      if (
+        typeof name !== 'string' || name.trim().length < 2 ||
+        typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ||
+        typeof message !== 'string' || message.trim().length < 5
+      ) {
+        return res.status(400).json({ error: 'Preencha corretamente nome, email e mensagem.' });
+      }
+      const entry = {
+        id: `msg_${Date.now()}`,
+        name: name.trim().slice(0, 120),
+        email: email.trim().toLowerCase().slice(0, 254),
+        message: message.trim().slice(0, 2000),
+        status: 'new',
+        createdAt: new Date().toISOString(),
+      };
+      const items = loadJsonArray(contactFilePath);
+      saveJsonArray(contactFilePath, [entry, ...items].slice(0, 500));
+      res.status(201).json(entry);
+    } catch (err: any) {
+      res.status(500).json({ error: 'Erro ao guardar mensagem.', message: err.message });
+    }
+  });
+
+  app.get('/api/contact', (req, res) => {
+    res.json(loadJsonArray(contactFilePath));
+  });
+
+  app.post('/api/newsletter', (req, res) => {
+    try {
+      const { email, language = 'pt' } = req.body || {};
+      if (typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+        return res.status(400).json({ error: 'Indique um endereço de email válido.' });
+      }
+      const normalized = email.trim().toLowerCase().slice(0, 254);
+      const items = loadJsonArray(newsletterFilePath);
+      if (items.some((s: any) => s.email === normalized)) {
+        return res.json({ alreadySubscribed: true, email: normalized });
+      }
+      const entry = {
+        id: `sub_${Date.now()}`,
+        email: normalized,
+        language: String(language).slice(0, 5),
+        createdAt: new Date().toISOString(),
+      };
+      saveJsonArray(newsletterFilePath, [entry, ...items].slice(0, 1000));
+      res.status(201).json(entry);
+    } catch (err: any) {
+      res.status(500).json({ error: 'Erro ao registar subscrição na newsletter.', message: err.message });
+    }
+  });
+
+  app.get('/api/newsletter', (req, res) => {
+    res.json(loadJsonArray(newsletterFilePath));
   });
 
   // --- BOOKS & FILES PERSISTENT API ROUTES ---
